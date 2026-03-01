@@ -266,6 +266,7 @@ bool telnetClient::waitPrompt(){
 void telnetClient::print(char c){
 	//edit this function if you want a different output!
 	sserial.print(c);
+	delay(5);
 }
 
 void telnetClient::setPromptChar(char c){

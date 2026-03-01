@@ -135,23 +135,7 @@ void MENU::update()
 
 void MENU::showMenu()
 {
-  /*
-  sserial.printf("\n\n");
-  sserial.printf("----- WIFI CONNECTOR MAIN MENU -----\n");
-  sserial.printf("1) Set wifi ssid (%s)\n", this->getSSID());
-  sserial.printf("2) Set wifi password\n\n");
-  sserial.printf("3) Set remote telnet server address (%s)\n", this->getTelnetServer());
-  sserial.printf("4) Set remote telnet username (%s)\n", this->getTelnetUser());
-  sserial.printf("5) Set remote telnet password\n");
-  sserial.printf("6) Set telnet prompt character (%c)\n\n", this->getTelnetPrompt());
-  sserial.printf("C) Connect to Wifi network using stored ssid/pass\n");
-  sserial.printf("S) Get Wifi status\n\n");
-  sserial.printf("T) Connect to telnet server\n\n");
-  sserial.printf("D) Dump config data; NOTE - WILL DISPLAY SECRETS!\n");
-  sserial.printf("Enter your choice: ");
-  */
-
-  //this->sendStr("\n\n");
+  this->sendStr("\n\n");
   this->sendStr("----- WIFI CONNECTOR MAIN MENU -----\n");
   this->sendStr("1) Set wifi ssid (%s)\n", this->getSSID());
   this->sendStr("2) Set wifi password\n\n");
@@ -375,6 +359,13 @@ const char* MENU::readString(const char* prompt)
   return (inputstr);
 }
 
+/************************************************
+* senStr()
+* Send a string out the serial port.  Adds a short
+* delay between characters.
+*
+* This is variadic, use it like printf()
+*************************************************/
 void MENU::sendStr(const char* fmt, ...)
 {
   size_t size = 1024;

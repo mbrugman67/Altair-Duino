@@ -14,7 +14,7 @@ TelnetBridge tn;
 void setup() 
 {
   Serial.begin();
-  sserial.begin(300, SWSERIAL_8N1, 7, 44, false);
+  sserial.begin(1200, SWSERIAL_8N1, 7, 44, false);
   tn.begin();
   serialMenu.begin();
 }
