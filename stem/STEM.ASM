@@ -444,7 +444,7 @@ mcploop:                        ; work to do
         stax    d               ; save to destination
         inx     b               ; next source
         inx     d               ; next destination
-        dcr     l               ; decrement copy count
+        dcr     l               ; decrement copy count (sets zero flag)
         jmp     mcploop         ; check and do next byte
 mcpdone:
         pop     d               ; restore dst addr
@@ -630,12 +630,10 @@ setcur:
 ;       fcount - number of files found (16-bit integer)
 ; Stomps on most registers :/
 enumdir:
-	lhld    flist           ; get the address file bufffer
+	lxi     h,flist         ; get the address file buffer
         shld    flposn          ; save that as pointer (start at beginning)
-        mvi     l,0             ; file count is a 16-bit integer
-        mvi     h,0             ; start with it zeroed out
+        lxi     h,0             ; zero file count (16-bit integer)
         shld    fcount          ; and store it
-
         call    first           ; find first file, FCB is in B/C
         cpi     0ffh            ; compare a to 255; 255 means no file found
         jnz     frstok          ; we found a file!
@@ -644,16 +642,14 @@ enumdir:
         jmp     cleanup         ; we're all done here
 frstok:
         inx     b               ; B/C holds FCB1, filename starts at second byte
-        lxi     d,flposn        ; get next address of filename buffer
+        lhld    flposn          ; load value at flposn into H/L
+        xchg                    ; swap H/L into D/E
         mvi     a,fnlen         ; set copy len to be 8+3 (file name + ext in FCB)
         call    memcpy          ; copy filename to buffer
-        lxi     h,flposn        ; get the buffer pointer again
-        mvi     b,0             ; load B/C with filename lenght
-        mvi     c,fnlen         ; ''
+        lhld    flposn          ; get the buffer pointer again
+        lxi     b,fnlen         ; load B/C with filename length
         dad     b               ; add filename length to buffer pointer
         shld    flposn          ; save it
-        ;call    pfname          ; print the first file name
-        ;call    crlf            ; newline/return
         lhld    fcount          ; get file count
         inx     h               ; increment
         shld    fcount          ; save
@@ -662,16 +658,14 @@ nxtfl:
         cpi     0ffh            ; no more files found
         jz      enumret         ; so break out of loop
         inx     b               ; B/C holds FCB1, filename starts at second byte
-        lxi     d,flposn        ; get next address of filename buffer
+        lhld    flposn          ; get next address of filename buffer into H/L
+        xchg                    ; swap that into D/E
         mvi     a,fnlen         ; set copy len to be 8+3 (file name + ext in FCB)
         call    memcpy          ; copy filename to buffer
-        lxi     h,flposn        ; get the buffer pointer again
-        mvi     b,0             ; load B/C with filename lenght
-        mvi     c,fnlen         ; ''
+        lhld    flposn          ; get the buffer pointer again
+        lxi     b,fnlen         ; load B/C with filename length
         dad     b               ; add filename length to buffer pointer
         shld    flposn          ; save it
-        ;call    pfname          ; print this filename
-        ;call    crlf            ; newline/return
         lhld    fcount          ; get file count
         inx     h               ; increment
         shld    fcount          ; save
@@ -731,7 +725,7 @@ fndlp2:
         jnz     fndlp2          ; nope, guess not :/
         dcr     c               ; decrement file count
         mov     a,c             ; move for compare
-        ;jnz     fndlp           ; go do next
+        jnz     fndlp           ; go do next
 fnddone:
         pop     h               ; restore H/L
         pop     d               ; restore D/E
@@ -753,8 +747,8 @@ mworkng db      'Enumerating files in drive $'
 ;***************************************************
 ; START OF VARIABLE DATA AREA
 ;***************************************************
-fcount  dw      1               ; file count addr
-flposn  dw      1               ; position in file name array
+fcount  ds      2               ; file count addr
+flposn  ds      2               ; position in file name array
 flist   ds      512             ; area for list of filenames
 esctmp  ds      24              ; temp area for building escape sequences
 orgstk	ds	2		; original stack pointer
