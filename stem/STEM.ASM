@@ -688,7 +688,7 @@ fndisp
         jz      fnddone         ; then we're done
         mov     c,a             ; save file count
         mov     d,4             ; first line to use - 1
-        lhld    flist           ; get buffer address
+        lxi     h,flist           ; get buffer address
 fndlp:
         inr     d               ; next line
         mvi     e,3             ; start in column 3
@@ -757,33 +757,3 @@ canary  ds      4               ; stack canary
 newstk				; top of newstk area
 
 	end
-
-
-
-
-;getsz   db      01bh,'[999,999h',01bh,'[6n$'
-;msg1    db      'Getting console size (line,column): $'
-        ;mvi     c,strout
-        ;lxi     d,msg1
-        ;call    sys
-
-        ; get size
-        ;mvi     c,strout
-        ;lxi     d,getsz
-        ;call    sys
-
-;szloop:
-        ;mvi     b,0
-        ;mvi     c,conin
-        ;call    sys
-
-        ;cpi     'R'
-        ;jz      szlp1
-        ;call    pchar
-        ;mvi     a,' '
-        ;call    pchar
-        ;jmp     szloop
-
-
-;szlp1:
-        ;call    crlf
