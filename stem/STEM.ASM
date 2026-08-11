@@ -617,12 +617,14 @@ enumdir:
         shld    flposn          ; save that as pointer (start at beginning)
         lxi     h,fcount        ; get file count variable
         mvi     m,0             ; zero file count
+        lxi     h,flsel         ; get the selected file variable
+        mvi     m,0             ; zero that, too
         call    first           ; find first file, FCB is in B/C
         cpi     0ffh            ; compare a to 255; 255 means no file found
         jnz     frstok          ; we found a file!
         mvi     c,strout        ; gonna print a string
         lxi     d,nofiles       ; msg: no files on disk
-        jmp     cleanup         ; we're all done here
+        jmp     enumret         ; we're all done here
 frstok:
         inx     b               ; B/C holds FCB1, filename starts at second byte
         lhld    flposn          ; load value at flposn into H/L
@@ -706,7 +708,9 @@ prnnm5:
 
 ;
 ; fndisp
-; Formatted display of filenames
+; Formatted display of filenames.  4 columns of names,
+; each with a preceding "[ ]" which will be used to hold
+; selected file status
 ;
 fndisp
         push    psw             ; save A and PSW
@@ -719,11 +723,10 @@ fndisp
         cpi     0               ; is it zero (no files?)
         jz      fnddone         ; then we're done
         mov     c,a             ; save file count
-        mvi     d,2             ; first line to use - 1
+        mvi     d,2             ; first line to use
         mvi     e,1             ; start in column 1
         lxi     h,flist         ; get buffer address
 fndlp:
-        inr     d               ; next line
         call    setcur          ; move cursor there
         mvi     a,'['           ; print
         call    pchar           ;   [ ]
@@ -734,6 +737,14 @@ fndlp:
         call    prnname         ; print filename
         lxi     h,flsel         ; get selected file number
         inr     m               ; and increment it
+        mov     a,e             ; get column start
+        adi     17              ; bump it up for next set of files
+        mov     e,a             ; save it for now
+        cpi     67              ; anything greater than 67 would be column 5
+        jm      fndlp1          ; nope, this is column 4 or less
+        mvi     e,1             ; start over at column 1
+        inr     d               ; next row
+fndlp1:
         dcr     c               ; decrement file count, sets Z flag
         jnz     fndlp           ; go do next
 fnddone:
