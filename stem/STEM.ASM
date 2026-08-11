@@ -108,6 +108,9 @@ DNARR   equ     018h            ; down arror keycode (hex)
 fcblen	equ 	32		; byte size of File Control Block
 fnbflen equ     452             ; length of filename buffer
 fnlen   equ     11              ; length of 8.3 filename (8+3)
+dspace  equ     17              ; spacing between filenames in list
+dsmax   equ     77              ; when to wrap filename list
+strtrow equ     3               ; first row of file list
 
 ;****************************************************
 ; Start of actual program code here
@@ -142,20 +145,96 @@ fnlen   equ     11              ; length of 8.3 filename (8+3)
         mvi     c,conin         ; wait for keypress
         call    sys             ; waiting, key will be in A
 
-        call    listfls         ; initial load of files
+usrlp0:
+        call    clrtags         ; clear all file tags
+        call    listfls         ; load and list files
+uinext:                         ; user UI interaction loop
+        call    prnui           ; print user interface info & menu\
+        call    cin2uppr        ; get user input (force to uppercase)
+        cpi     'N'             ; Next file?
+        jnz     uiprev          ; nope, check for previous file
+        lda     flsel           ; get selected file
+        mov     b,a             ; save it in B
+        lda     fcount          ; get total filecount
+        dcr     a               ; decrement count for good compare
+        cmp     b               ; compare to current file
+        jz      uinxt2          ; are we at the last file?
+        lxi     h,flsel         ; increment selected
+        inr     m               ; file indicator
+        jmp     uinext          ; next UI interaction
+uinxt2:
+        lxi     h,flsel         ; wrap selected file variable
+        mvi     m,0             ; back to file zero
+        jmp     uinext          ; next UI interaction
+uiprev:
+        cpi     'P'             ; "P" for previous file
+        jnz     uitag           ; nope, check for tag/untag
+        lxi     h,flsel         ; get current selected file
+        mov     a,m             ; drop in A
+        cpi     0               ; are we already at zero?
+        jz      uiprv2          ; yup, go set it to max count
+        dcr     m               ; decrement counter
+        jmp     uinext          ; next UI interaction
+uiprv2:
+        lda     fcount          ; get filecount
+        dcr     a               ; zero-based count
+        sta     flsel           ; save it as selection
+        jmp     uinext          ; next UI interaction
+uitag:
+        cpi     ' '             ; do tag/untag?
+        jnz     uidel           ; nope, check for delete
+        lda     flsel           ; get currently selected file number
+        mov     l,a             ; save it to L
+        mvi     d,strtrow       ; first line to use
+        mvi     e,2             ; start in column 2
+        cpi     0               ; inital check
+tag1:
+        jz      tag3            ; yup
+        mov     a,e             ; get column start
+        adi     dspace          ; bump it up for next set of files
+        mov     e,a             ; save it for now
+        cpi     dsmax           ; anything greater than 77 would be column 6
+        jm      tag2            ; nope, this is column 5 or less
+        mvi     e,2             ; start over at column 2
+        inr     d               ; next row
+tag2:
+        dcr     l               ; decrement selected count, sets Z flag
+        jmp     tag1
+tag3:
+        call    setcur          ; move cursor to that spot
+        lda     flsel           ; get selected file
+        call    gettag          ; is this one already set?
+        jz      tag4            ;
+        call    clrtag
+        mvi     a,' '           ; set tag char
+tag4:
+        call    settag
+        mvi     a,'X'
+        call    pchar           ; print it
+        mvi     d,2
+        mvi     e,1
+        call    setcur
+        lda     tags
+        call    phex
+        jmp     uinext          ; next UI interaction
 
+uidel:
+        cpi     'D'
+        jnz     uitype
+        jmp     usrlp0          ; reload file list, then do UI interactions
 
+uitype:
+        cpi     'T'
+        jnz     uiren
 
-usrlp1:
-        mvi     c,conin
-        call    sys
-        cpi     ' '
+uiren:
+        cpi     'R'
+        jnz     uiexit
+
+uiexit:
+        cpi     'X'
         jz      cleanup
-        lxi     h,flsel
-        inr     m
-        jmp     usrlp1
-
-
+        jmp     uinext          ; next UI interaction
 
 
 ;*************************************************
@@ -233,6 +312,24 @@ phex:
         call	pnib		; print lower nibble
         pop	psw		; final restore before return
         ret
+
+; cin2uppr
+; Console in to uppercase - do a conin, if lowercase alpha, shift to
+; upper, otherwise leave as is
+; RETURNS:
+;       byte in A
+cin2uppr:
+        push    b               ; save B/C pair
+        mvi     c,conin         ; code for console in
+        call    sys             ; do the syscall
+        cpi     'a'             ; is char greater or equal to lowercase a?
+        jm      c2udone         ; less than lower case a, return whatever this is
+        cpi     'z'+1           ; is char greater than lowercase z?
+        jp      c2udone         ; sure it, just return it
+        ani     0dfh            ; mask off bit 5 (that's the difference between A and a, etc)
+c2udone:
+        pop     b               ; restore B/C
+        ret                     ; and get outta here
 
 ;
 ; prn16
@@ -476,6 +573,156 @@ mstdone:
         ret                     ; get outta here
 
 ;
+; clrtags
+; Clear all tags
+clrtags:
+        push    h
+        push    b
+        mvi     b,8             ; 8 bytes of tags
+        lxi     h,tags          ; get the array of tags
+clrlp1:
+        dcr     b               ; decrement count, sets Z flag
+        jz      clrdn           ; are we done?
+        mvi     m,0             ; clear all bits
+        inx     h               ; next tag
+        jmp     clrlp1          ; go do it again
+clrdn:
+        pop     b
+        pop     h
+        ret
+
+;
+; settags
+; Set all tags
+settags:
+        push    h
+        push    b
+        mvi     b,8             ; 8 bytes of tags
+        lxi     h,tags          ; get the array of tags
+setlp1:
+        dcr     b               ; decrement count, sets Z flag
+        jz      setdn           ; are we done?
+        mvi     m,0ffh          ; set all bits
+        inx     h               ; next tag
+        jmp     setlp1          ; go do it again
+setdn:
+        pop     b
+        pop     h
+        ret
+
+;
+; gettag
+; Get the value of the desired tag
+; IN
+;       A - index of tag
+; OUT
+;       A - tag value (1=set, 0=clear)
+gettag:
+        push    b               ;
+        push    d               ;
+        push    h               ;
+        mov     c,a             ; save tag index
+        rrc                     ; divide by
+        rrc                     ; eight is 3
+        rrc                     ; right shifts
+        ani     0fh             ; mask off upper 8 bits
+        lxi     d,0             ; set D/E to zero
+        mov     e,a             ; set D/E to be result of inx / 8
+        lxi     h,tags          ; get tag array
+        dad     d               ; this is byte index!
+        mov     a,c             ; get original tag number
+        ani     07h             ; mask off lower 4 bits
+        mov     c,a             ; this is bit index!
+        cpi     0               ; initial check
+        mvi     a,1             ; set bit 1
+gtlp1:
+        jz      gttdne          ;
+        rlc                     ; shift left
+        dcr     c               ; decrement count, sets Z flag
+        jmp     gtlp1
+gttdne:
+        ana     m               ; AND with index byte to get result!
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        ret
+
+;
+; settag
+; Set the desired tag
+; IN
+;       A - index of tag to set
+settag:
+        push    psw
+        push    b               ;
+        push    d               ;
+        push    h               ;
+        mov     c,a             ; save tag index
+        rrc                     ; divide by
+        rrc                     ; eight is 3
+        rrc                     ; right shifts
+        ani     0fh             ; mask off upper 8 bits
+        lxi     d,0             ; set D/E to zero
+        mov     e,a             ; set D/E to be result of inx / 8
+        lxi     h,tags          ; get tag array
+        dad     d               ; this is byte index!
+        mov     a,c             ; get original tag number
+        ani     07h             ; mask off lower 4 bits
+        mov     c,a             ; this is bit index!
+        cpi     0               ; initial check
+        mvi     a,1             ; set bit 1
+stlp1:
+        jz      setdne          ;
+        rlc                     ; shift left
+        dcr     c               ; decrement count, sets Z flag
+        jmp     stlp1
+setdne:
+        ora     m               ; OR with index byte to get result!
+        mov     m,a             ; save it back to array
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        pop     psw             ;
+        ret
+
+;
+; clrtag
+; Clear the value of the desired tag
+; IN
+;       A - index of tag
+clrtag:
+        push    b               ;
+        push    d               ;
+        push    h               ;
+        mov     c,a             ; save tag index
+        rrc                     ; divide by
+        rrc                     ; eight is 3
+        rrc                     ; right shifts
+        ani     0fh             ; mask off upper 8 bits
+        lxi     d,0             ; set D/E to zero
+        mov     e,a             ; set D/E to be result of inx / 8
+        lxi     h,tags          ; get tag array
+        dad     d               ; this is byte index!
+        mov     a,c             ; get original tag number
+        ani     07h             ; mask off lower 4 bits
+        mov     c,a             ; this is bit index!
+        cpi     0               ; initial check
+        mvi     a,1             ; set bit 1
+cltlp1:
+        jz      cltdne          ;
+        rlc                     ; shift left
+        dcr     c               ; decrement count, sets Z flag
+        jmp     cltlp1
+cltdne:
+        xri     0ffh            ; complement the set bit
+        ana     m               ; AND with index byte to clear the bit
+        mov     m,a             ; store it back to the array
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        ret
+
+;
 ; first
 ; get first file FCB in directory
 ; RETURNS:
@@ -708,7 +955,7 @@ prnnm5:
 
 ;
 ; fndisp
-; Formatted display of filenames.  4 columns of names,
+; Formatted display of filenames.  5 columns of names,
 ; each with a preceding "[ ]" which will be used to hold
 ; selected file status
 ;
@@ -723,7 +970,7 @@ fndisp
         cpi     0               ; is it zero (no files?)
         jz      fnddone         ; then we're done
         mov     c,a             ; save file count
-        mvi     d,2             ; first line to use
+        mvi     d,strtrow       ; first line to use
         mvi     e,1             ; start in column 1
         lxi     h,flist         ; get buffer address
 fndlp:
@@ -738,10 +985,10 @@ fndlp:
         lxi     h,flsel         ; get selected file number
         inr     m               ; and increment it
         mov     a,e             ; get column start
-        adi     17              ; bump it up for next set of files
+        adi     dspace          ; bump it up for next set of files
         mov     e,a             ; save it for now
-        cpi     67              ; anything greater than 67 would be column 5
-        jm      fndlp1          ; nope, this is column 4 or less
+        cpi     dsmax           ; anything greater than 77 would be column 6
+        jm      fndlp1          ; nope, this is column 5 or less
         mvi     e,1             ; start over at column 1
         inr     d               ; next row
 fndlp1:
@@ -774,26 +1021,63 @@ listfls:
                                 ; names stored in buffer, not printed yet
 
         mvi     d,1             ; new cursor position, line 1
-        mvi     e,1             ; column 1
+        mvi     e,27            ; column 27
         call    rstline         ; clear current line, put cursor in position
         mvi     c,strout        ; print string
-        lxi     d,fndstr1       ; "Found " message
-        call    sys             ; CP/M
-        lhld    fcount          ; get file count
-        call    prn8            ; print it as decimal
-        mvi     c,strout        ; print string
-        lxi     d,fndstr2       ; " files on drive " message
+        lxi     d,fndstr1       ; "Listing of drive " message
         call    sys             ; CP/M
         mvi     c,getdsk        ; get current disk number (A=0, etc)
         call    sys             ; ask CP/M for it, return in A
         adi     'A'             ; bias for ASCII
         call    pchar           ; print that
+        mvi     c,strout        ; print string
         mvi     a,':'           ; trailing colon after drive letter
         call    pchar           ; print to terminal
+        lxi     d,fndstr2       ; " (total of  " message
+        call    sys             ; CP/M
+        lhld    fcount          ; get file count
+        call    prn8            ; print it as decimal
+        mvi     c,strout        ; print string
+        lxi     d,fndstr3       ; final part of header
+        call    sys             ; print to terminal
 
         call    fndisp          ; formatted listing of filenames
+        lxi     h,flsel         ; reload selected file number
+        mvi     m,0             ; and reset to zero
         ret
 
+;
+; prnui
+; Print "user interface" section
+;
+prnui:
+        push    psw             ; save A and PSW
+        push    b               ; save B/C
+        push    d               ; save D/E
+        push    h               ; save H/L
+        mvi     d,20            ; go to line 20
+        mvi     e,1             ; column 1
+        call    setcur          ;
+        call    rstline         ; and put the cursor there & clear line
+        lxi     d,uistr1        ; "Current file..." message
+        mvi     c,strout        ; string out syscall
+        call    sys             ; make the syscall
+        call    prnname         ; print selected filename
+        mvi     d,21            ; go to line 21
+        mvi     e,1             ; column 1
+        call    setcur          ;
+        call    rstline         ; and put the cursor there & clear line
+        lxi     d,uistr2        ; second UI line
+        mvi     c,strout        ; print string
+        call    sys             ; let cpm print it
+        lxi     d,uistr3        ; second UI line
+        mvi     c,strout        ; print string
+        call    sys             ; let cpm print it
+        pop     h               ; restore H/L
+        pop     d               ; restore D/E
+        pop     b               ; restore B/C
+        pop     psw             ; restore A and PSW
+        ret                     ; all done!
 
 ;***************************************************
 ; START OF FIXED DATA AREA
@@ -802,8 +1086,12 @@ welcom1	db	'Altair 8800 File Manager$'
 welcom2 db      '2026 Mattydyne Heavy Industries$'
 welcom3 db      '"H" for help, any other key to start',CR,LF,'$'
 nofiles db      'No files found!',CR,LF,'$'
-fndstr1 db      'Found $'
-fndstr2 db      ' file(s) on drive $'
+fndstr1 db      'Listing of drive $'
+fndstr2 db      ' (total of $'
+fndstr3 db      ' files)$'
+uistr1  db      'Currently selected file: $'
+uistr2  db      '(N-next,P-prev,SPACE-tag/untag,D-delete,$'
+uistr3  db      'C-copy,T-display,R-rename,X-exit)? $'
 schfcb  db      0,'???????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 mworkng db      'Enumerating files in drive $'
 
@@ -814,6 +1102,7 @@ fcount  ds      2               ; file count addr
 flsel   ds      2               ; selected file number
 flposn  ds      2               ; position in file name array
 flist   ds      512             ; area for list of filenames
+tags    ds      8               ; bitmap of tagged files
 esctmp  ds      24              ; temp area for building escape sequences
 orgstk	ds	2		; original stack pointer
 canary  ds      4               ; stack canary
