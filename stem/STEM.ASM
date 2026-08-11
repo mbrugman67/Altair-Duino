@@ -103,6 +103,8 @@ dma1	equ	0080h		; first DMA area 128 bytes
 ;*****************************************************
 CR	equ	0dh		; carriage return
 LF	equ	0ah		; line feed
+UPARR   equ     05h             ; up arror keycode (hex)
+DNARR   equ     018h            ; down arror keycode (hex)
 fcblen	equ 	32		; byte size of File Control Block
 fnbflen equ     452             ; length of filename buffer
 fnlen   equ     11              ; length of 8.3 filename (8+3)
@@ -111,56 +113,48 @@ fnlen   equ     11              ; length of 8.3 filename (8+3)
 ; Start of actual program code here
 ; .org 100h - TPA area starts at 0x0100
 ;****************************************************
-	org	0100h		; entry point at 100 hex (TPA area)
-	lxi	h,0		; zero H/L register pair
-	dad	sp		; get stack pointer from CCP to H/L
-	shld	orgstk		; save original stack pointer to memory
-	lxi	sp,newstk	; set stack pointer to our new stack
+        org	0100h		; entry point at 100 hex (TPA area)
+        lxi	h,0		; zero H/L register pair
+        dad	sp		; get stack pointer from CCP to H/L
+        shld	orgstk		; save original stack pointer to memory
+        lxi	sp,newstk	; set stack pointer to our new stack
 
         call    cls             ; clear terminal screen
         mvi     d,5             ; move cursor to line 5
         mvi     e,16            ; move cursor to column 16
         call    setcur          ; move cursor
-	mvi	c,strout	; load reg C with command to print string
-	lxi	d,welcom1	; point to address of welcome #1 string
-	call	sys		; call the system function to print string
+        mvi	c,strout	; load reg C with command to print string
+        lxi	d,welcom1	; point to address of welcome #1 string
+        call	sys		; call the system function to print string
         mvi     d,6             ; move cursor to line 6
         mvi     e,13            ; move cursor to column 13
         call    setcur          ; move cursor
-	mvi	c,strout	; load reg C with command to print string
-	lxi	d,welcom2	; point to address of welcome #2 string
-	call	sys		; call the system function to print string
+        mvi	c,strout	; load reg C with command to print string
+        lxi	d,welcom2	; point to address of welcome #2 string
+        call	sys		; call the system function to print string
         mvi     d,8             ; move cursor to line 8
         mvi     e,11            ; move cursor to column 11
         call    setcur          ; move cursor
-	mvi	c,strout	; load reg C with command to print string
-	lxi	d,welcom3	; point to address of welcome #3 string
-	call	sys		; call the system function to print string
+        mvi	c,strout	; load reg C with command to print string
+        lxi	d,welcom3	; point to address of welcome #3 string
+        call	sys		; call the system function to print string
 
         mvi     c,conin         ; wait for keypress
         call    sys             ; waiting, key will be in A
 
-        call    cls             ; clear screen again
-        lxi     d,mworkng       ; message "Enumerating files"...
-        mvi     c,strout        ; print string to terminal
-        call    sys             ; call CP/M to do it
-        mvi     c,getdsk        ; get current disk number (A=0, etc)
-        call    sys             ; ask CP/M for it, return in A
-        adi     'A'             ; bias for ASCII
-        call    pchar           ; print that
-        mvi     a,':'           ; trailing colon after drive letter
-        call    pchar           ; print to terminal
-        call    crlf            ; return/newline
+        call    listfls         ; initial load of files
 
-        call    enumdir         ; get the listing for the logged drive
-        call    fndisp          ; formatted listing of filenames
-        call    crlf
-        mvi     c,strout        ; print string
-        lxi     d,donemsg       ; "File count" message
-        call    sys             ; CP/M
-        lhld    fcount          ; get file count
-        call    prn16           ; print it as decimal
-        call    crlf
+
+
+usrlp1:
+        mvi     c,conin
+        call    sys
+        cpi     ' '
+        jz      cleanup
+        lxi     h,flsel
+        inr     m
+        jmp     usrlp1
+
 
 
 
@@ -169,9 +163,9 @@ fnlen   equ     11              ; length of 8.3 filename (8+3)
 ; restore original stack pointer, etc.
 ;*************************************************
 cleanup:
-	lhld	orgstk		; load original stack pointer to H/L pair
-	sphl			; set stack pointer from H/L pair
-	ret			; back to CCP, end of program
+        lhld	orgstk		; load original stack pointer to H/L pair
+        sphl			; set stack pointer from H/L pair
+        ret			; back to CCP, end of program
 
 
 ;*************************************************
@@ -184,61 +178,61 @@ cleanup:
 ;	reg A - character to print
 ; all registers preserved
 pchar:
-	push	h		; save registers that we'll
-	push	d		; be using
-	push	b
-	mvi	c,conout	; CP/M function for char out
-	mov	e,a		; char needs to be in Reg e
-	call	sys		; call CP/M to print
-	pop	b		;
-	pop	d		; restore registers
-	pop	h		; that were used
-	ret
+        push	h		; save registers that we'll
+        push	d		; be using
+        push	b
+        mvi	c,conout	; CP/M function for char out
+        mov	e,a		; char needs to be in Reg e
+        call	sys		; call CP/M to print
+        pop	b		;
+        pop	d		; restore registers
+        pop	h		; that were used
+        ret
 
 ;
 ; crlf
 ; output carriage return/linefeed to console out
 crlf:
-	push	psw		; save A reg
-	mvi	a,CR		; set A to carriage return
-	call	pchar		; go print it
-	mvi	a,LF		; set A to linefeed
-	call	pchar		; go print it
-	pop	psw		; restore A reg
-	ret
+        push	psw		; save A reg
+        mvi	a,CR		; set A to carriage return
+        call	pchar		; go print it
+        mvi	a,LF		; set A to linefeed
+        call	pchar		; go print it
+        pop	psw		; restore A reg
+        ret
 
 ;
 ; pnib
 ; Print low nibble in register A
 ; register A stomped
 pnib:
-	ani	0fh		; mask off upper nibble
-	cpi	10		; value of low nibble under 10?
-	jnc	pnib10		; nope, it's hex a-f, go there
-	adi	'0'		; add 30h to value (for ascii 0-9)
-	jmp	pnibprn		; print it out
+        ani	0fh		; mask off upper nibble
+        cpi	10		; value of low nibble under 10?
+        jnc	pnib10		; nope, it's hex a-f, go there
+        adi	'0'		; add 30h to value (for ascii 0-9)
+        jmp	pnibprn		; print it out
 pnib10:
-	adi	'a'-10		; hex a-f, add ascii 'A' offset
+        adi	'a'-10		; hex a-f, add ascii 'A' offset
 pnibprn:
-	call	pchar		; print
-	ret
+        call	pchar		; print
+        ret
 
 ;
 ; phex
 ; print hex (2 chars)
 ; IN char to print in register A
 phex:
-	push	psw		; save A register
-	rrc			;
-	rrc			; start with upper nibble
-	rrc			; so rotate bits right
-	rrc			; 4 bits
-	call	pnib		; print this upper nibble
-	pop	psw		; restore A register
-	push	psw		; save it again
-	call	pnib		; print lower nibble
-	pop	psw		; final restore before return
-	ret
+        push	psw		; save A register
+        rrc			;
+        rrc			; start with upper nibble
+        rrc			; so rotate bits right
+        rrc			; 4 bits
+        call	pnib		; print this upper nibble
+        pop	psw		; restore A register
+        push	psw		; save it again
+        call	pnib		; print lower nibble
+        pop	psw		; final restore before return
+        ret
 
 ;
 ; prn16
@@ -382,18 +376,18 @@ b2asc4:
 ; stomps A
 ; stomps B/C
 strlen:
-	push 	d		; save addr of string
-	lxi	b,0		; zero out B/C pair
+        push 	d		; save addr of string
+        lxi	b,0		; zero out B/C pair
 slloop:
-	ldax	d		; get char pointed to by D/E
-	cpi	00h		; is it NULL (0)?
-	jz	sldone		; yup, get out
-	inx	b		; increment B/C
-	inx	d		; next char pointed to by H/L
-	jmp	slloop		; compare next
+        ldax	d		; get char pointed to by D/E
+        cpi	00h		; is it NULL (0)?
+        jz	sldone		; yup, get out
+        inx	b		; increment B/C
+        inx	d		; next char pointed to by H/L
+        jmp	slloop		; compare next
 sldone:
-	pop	d		; restore char pointer
-	ret
+        pop	d		; restore char pointer
+        ret
 
 ;
 ; strcmp
@@ -404,24 +398,24 @@ sldone:
 ; OUT:
 ;	PSW flags (zero, plus, minus).  Zero flag means match
 strcmp:
-	push	h		; save H/L pair (using l)
-	push	b		; save addr of string 1
-	push	d		; save addr of string 2
+        push	h		; save H/L pair (using l)
+        push	b		; save addr of string 1
+        push	d		; save addr of string 2
 scloop:
-	ldax	b		; get char pointed to by B/C
-	mov	l,a		; save it in Reg l
-	ldax	d		; get char pointed to by D/E
-	cmp	l		; compare 2 characters
-	jnz	scdone		; done if they are not the same
-	inx	b		; next char of str 1
-	inx	d		; next char of str 2
-	cpi	0		; null? end of string?
-	jnz	scloop		; nope, next char
+        ldax	b		; get char pointed to by B/C
+        mov	l,a		; save it in Reg l
+        ldax	d		; get char pointed to by D/E
+        cmp	l		; compare 2 characters
+        jnz	scdone		; done if they are not the same
+        inx	b		; next char of str 1
+        inx	d		; next char of str 2
+        cpi	0		; null? end of string?
+        jnz	scloop		; nope, next char
 scdone:
-	pop	d		; restore pointer to start of str 1
-	pop	b		; restore pointer to start of str 2
-	pop	h		; restore Reg H/L pair
-	ret			; all done!
+        pop	d		; restore pointer to start of str 1
+        pop	b		; restore pointer to start of str 2
+        pop	h		; restore Reg H/L pair
+        ret			; all done!
 
 
 ;
@@ -433,11 +427,11 @@ scdone:
 ;       D/E destination
 memcpy:
         push    psw             ; save a/status register
-	push	h		; save H/L pair (using l)
-	push	b		; save addr of source
-	push	d		; save addr of destination
-	mov     l,a             ; save count to L
-	cpi     0               ; initial compare, make sure there's
+        push	h		; save H/L pair (using l)
+        push	b		; save addr of source
+        push	d		; save addr of destination
+        mov     l,a             ; save count to L
+        cpi     0               ; initial compare, make sure there's
 mcploop:                        ; work to do
         jz      mcpdone         ; done copying, clean up and return
         ldax    b               ; get next byte from source
@@ -462,14 +456,14 @@ mcpdone:
 ;       B count of bytes to set
 ;       D/E buff
 memset:
-	push	d		; save addr of buffer
-	push    psw             ; save set byte
+        push	d		; save addr of buffer
+        push    psw             ; save set byte
         push    b               ; save count
-	mov     a,b
-	cpi     0
-	pop     b
-	pop     psw
-	push    b
+        mov     a,b
+        cpi     0
+        pop     b
+        pop     psw
+        push    b
 mstloop:
         jz      mstdone         ; done setting, cleanup and return
         stax    d               ; set addr to desired values
@@ -522,41 +516,6 @@ nextf:
         mov     b,h             ; save that to
         mov     c,l             ; B/C pair
 nextdone:
-        ret
-
-;
-; pfname
-; Print the filename stored in a FCB
-; IN:
-;       B/C - address of FCB
-pfname:
-        push    psw             ; save A and PSW registers
-        push    h               ; save H/L register pair
-        push    b               ; save FCB address
-        inx     b               ; name starts at byte 1
-        mvi     l,8             ; 8 chars in filename
-pfnl1:
-        ldax    b               ; get next char in name
-        cpi     ' '             ; is it a space?
-        jz      pfnskp          ; don't print a spacee
-        call    pchar           ; print to console
-pfnskp
-        inx     b               ; next byte in FCB
-        dcr     l               ; decrement L, will set Z flag on zero
-        jnz     pfnl1           ; next char
-
-        mvi     a,'.'           ; name delimeter
-        call    pchar
-        mvi     l, 3            ; 3 chars in extension
-pfnl2:
-        ldax    b               ; get next char in name
-        call    pchar           ; print to console
-        inx     b               ; next byte in FCB
-        dcr     l               ; decrement L, will set Z flag on zero
-        jnz     pfnl2           ; next char
-        pop     b               ; restore FCB address
-        pop     h               ; restore H/L register pair
-        pop     psw             ; restore A and PSW registers
         ret
 
 ;
@@ -623,17 +582,41 @@ setcur:
         ret                     ; bye!
 
 ;
+; rstline
+; Clear current line and reset cursor to d,e
+;
+rstline:
+        push    d
+        push    h
+        lxi     h,esctmp
+        mvi     m,01bh
+        inx     h
+        mvi     m,'['
+        inx     h
+        mvi     m,'2'
+        inx     h
+        mvi     m,'K'
+        inx     h
+        mvi     m,'$'
+        mvi     c,strout
+        lxi     d,esctmp
+        call    sys
+        pop     h
+        pop     d
+        call    setcur
+        ret
+;
 ; enumdir
 ; Enumerate directory - get all filenames on the currently
 ; logged disk
 ; RETURNS
-;       fcount - number of files found (16-bit integer)
+;       fcount - number of files found
 ; Stomps on most registers :/
 enumdir:
-	lxi     h,flist         ; get the address file buffer
+        lxi     h,flist         ; get the address file buffer
         shld    flposn          ; save that as pointer (start at beginning)
-        lxi     h,0             ; zero file count (16-bit integer)
-        shld    fcount          ; and store it
+        lxi     h,fcount        ; get file count variable
+        mvi     m,0             ; zero file count
         call    first           ; find first file, FCB is in B/C
         cpi     0ffh            ; compare a to 255; 255 means no file found
         jnz     frstok          ; we found a file!
@@ -650,9 +633,8 @@ frstok:
         lxi     b,fnlen         ; load B/C with filename length
         dad     b               ; add filename length to buffer pointer
         shld    flposn          ; save it
-        lhld    fcount          ; get file count
-        inx     h               ; increment
-        shld    fcount          ; save
+        lxi     h,fcount        ; get file count
+        inr     m               ; increment
 nxtfl:
         call    nextf           ; look for another file
         cpi     0ffh            ; no more files found
@@ -666,12 +648,61 @@ nxtfl:
         lxi     b,fnlen         ; load B/C with filename length
         dad     b               ; add filename length to buffer pointer
         shld    flposn          ; save it
-        lhld    fcount          ; get file count
-        inx     h               ; increment
-        shld    fcount          ; save
+        lxi     h,fcount        ; get file count
+        inr     m               ; increment
         jmp     nxtfl           ; go try again
 enumret:
         ret                     ; all done!
+
+;
+; prnname
+; Print filename in human readible form
+; Name to print will be the selected file number
+; store in variable FLSEL
+;
+prnname:
+        push    psw
+        push    b
+        push    d
+        push    h
+        lda     flsel           ; get selected file number
+        mov     b,a             ; save selected to B
+        mvi     c,0             ; zero current file index
+        lxi     h,flist         ; start of filename list buffer in H/L
+        mvi     d,0             ; filename in buffer is 11
+        mvi     e,11            ; bytes long, load D/E with 11
+prnnm1:
+        mov     a,c             ; get current index
+        cmp     b               ; is it the desired filename?
+        jz      prnnm2          ; yup, go print it
+        dad     d               ; add it to the current flist pointer value
+        inr     c               ; incrment file number
+        jmp     prnnm1;         ; go and increment again
+prnnm2
+        mvi     d,8             ; 8 characters in filename portion
+prnnm3:
+        mov     a,m             ; get next char
+        inx     h               ; increment buffer pointer
+        cpi     ' '             ; is it a space?
+        jz      prnnm4          ; don't print a space
+        call    pchar           ; print non-space char
+prnnm4:
+        dcr     d               ; decrement count, sets Z flag
+        jnz     prnnm3          ; more to print
+        mvi     a,'.'           ; delimiter
+        call    pchar           ; print it
+        mvi     d,3             ; 3 chars in extension portion
+prnnm5:
+        mov     a,m             ; get next char
+        inx     h               ; increment buffer pointer
+        call    pchar           ; print it
+        dcr     d               ; decrement char count, sets Z flag
+        jnz     prnnm5          ; nope, guess not :/
+        pop     h
+        pop     d
+        pop     b
+        pop     psw
+        ret
 
 ;
 ; fndisp
@@ -682,49 +713,28 @@ fndisp
         push    b               ; save B/C
         push    d               ; save D/E
         push    h               ; save H/L
-        lhld    fcount          ; get file count
-        mov     a,l             ; count to a
+        lxi     h,flsel         ; get selected file number
+        mvi     m,0             ; zero it out
+        lda     fcount          ; get file count to a
         cpi     0               ; is it zero (no files?)
         jz      fnddone         ; then we're done
         mov     c,a             ; save file count
-        mov     d,4             ; first line to use - 1
-        lxi     h,flist           ; get buffer address
+        mvi     d,2             ; first line to use - 1
+        mvi     e,1             ; start in column 1
+        lxi     h,flist         ; get buffer address
 fndlp:
         inr     d               ; next line
-        mvi     e,3             ; start in column 3
         call    setcur          ; move cursor there
-        mvi     a,'['           ;
-        call    pchar           ;
-        mvi     a,' '           ;
-        call    pchar           ;
-        mvi     a,']'           ;
-        call    pchar           ;
-        mvi     a,' '           ;
-        call    pchar           ;
-        mvi     b,8             ; 8 characters in filename portion
-fndlp1:
-        mov     a,m             ; get next char
-        inx     h               ; increment buffer pointer
-        cpi     ' '             ; is it a space?
-        jz      fndskp          ; don't print a space
-        call    pchar           ; print non-space char
-fndskp:
-        dcr     b               ; decrement count
-        mov     a,b             ; move to A to check
-        jnz     fndlp1          ; more to print
-        mvi     a,'.'           ; delimiter
-        call    pchar           ; print it
-        mvi     b,3             ; 3 chars in extension portion
-fndlp2:
-        mov     a,m             ; get next char
-        inx     h               ; increment buffer pointer
-        call    pchar           ; print it
-        dcr     b               ; decrement char count
-        mov     a,b             ; move for compare
-        cpi     0               ; done?
-        jnz     fndlp2          ; nope, guess not :/
-        dcr     c               ; decrement file count
-        mov     a,c             ; move for compare
+        mvi     a,'['           ; print
+        call    pchar           ;   [ ]
+        mvi     a,' '           ; to terminal
+        call    pchar           ; to hold
+        mvi     a,']'           ; and 'X'
+        call    pchar           ; inidicating selection
+        call    prnname         ; print filename
+        lxi     h,flsel         ; get selected file number
+        inr     m               ; and increment it
+        dcr     c               ; decrement file count, sets Z flag
         jnz     fndlp           ; go do next
 fnddone:
         pop     h               ; restore H/L
@@ -733,6 +743,47 @@ fnddone:
         pop     psw             ; restore A and PSW
         ret                     ; all done!
 
+;
+; listfls
+; List all files on logged drive, resets counters, etc.
+;
+listfls:
+        call    cls             ; clear
+        lxi     d,mworkng       ; message "Enumerating files"...
+        mvi     c,strout        ; print string to terminal
+        call    sys             ; call CP/M to do it
+        mvi     c,getdsk        ; get current disk number (A=0, etc)
+        call    sys             ; ask CP/M for it, return in A
+        adi     'A'             ; bias for ASCII
+        call    pchar           ; print that
+        mvi     a,':'           ; trailing colon after drive letter
+        call    pchar           ; print to terminal
+
+        call    enumdir         ; get the listing for the logged drive,
+                                ; names stored in buffer, not printed yet
+
+        mvi     d,1             ; new cursor position, line 1
+        mvi     e,1             ; column 1
+        call    rstline         ; clear current line, put cursor in position
+        mvi     c,strout        ; print string
+        lxi     d,fndstr1       ; "Found " message
+        call    sys             ; CP/M
+        lhld    fcount          ; get file count
+        call    prn8            ; print it as decimal
+        mvi     c,strout        ; print string
+        lxi     d,fndstr2       ; " files on drive " message
+        call    sys             ; CP/M
+        mvi     c,getdsk        ; get current disk number (A=0, etc)
+        call    sys             ; ask CP/M for it, return in A
+        adi     'A'             ; bias for ASCII
+        call    pchar           ; print that
+        mvi     a,':'           ; trailing colon after drive letter
+        call    pchar           ; print to terminal
+
+        call    fndisp          ; formatted listing of filenames
+        ret
+
+
 ;***************************************************
 ; START OF FIXED DATA AREA
 ;***************************************************
@@ -740,7 +791,8 @@ welcom1	db	'Altair 8800 File Manager$'
 welcom2 db      '2026 Mattydyne Heavy Industries$'
 welcom3 db      '"H" for help, any other key to start',CR,LF,'$'
 nofiles db      'No files found!',CR,LF,'$'
-donemsg db      'File count: $'
+fndstr1 db      'Found $'
+fndstr2 db      ' file(s) on drive $'
 schfcb  db      0,'???????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 mworkng db      'Enumerating files in drive $'
 
@@ -748,12 +800,13 @@ mworkng db      'Enumerating files in drive $'
 ; START OF VARIABLE DATA AREA
 ;***************************************************
 fcount  ds      2               ; file count addr
+flsel   ds      2               ; selected file number
 flposn  ds      2               ; position in file name array
 flist   ds      512             ; area for list of filenames
 esctmp  ds      24              ; temp area for building escape sequences
 orgstk	ds	2		; original stack pointer
 canary  ds      4               ; stack canary
-	ds	64		; 32 level stack
+        ds	64		; 32 level stack
 newstk				; top of newstk area
 
-	end
+        end
