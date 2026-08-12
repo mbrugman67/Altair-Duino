@@ -45,7 +45,7 @@
 ;****************************************************
 ; Entry point for FDOS, BIOS, CP/M system calls
 ;****************************************************
-sys     equ	5		; entry point for system (dos)
+sys     equ     5               ; entry point for system (dos)
 
 ;***************************************************
 ; syscall functions
@@ -95,17 +95,15 @@ wrtzer	equ     40		; write random with zero fill
 ;****************************************************
 ; CP/M constants/values/addresses
 ;****************************************************
-fcb1	equ	005ch		; first cmdline fcb
-dma1	equ	0080h		; first DMA area 128 bytes
+fcb1    equ     005ch           ; first cmdline fcb
+dma1    equ     0080h           ; first DMA area 128 bytes
 
 ;*****************************************************
 ;* handy constants
 ;*****************************************************
-CR	equ	0dh		; carriage return
-LF	equ	0ah		; line feed
-UPARR   equ     05h             ; up arror keycode (hex)
-DNARR   equ     018h            ; down arror keycode (hex)
-fcblen	equ 	32		; byte size of File Control Block
+CR      equ     0dh             ; carriage return
+LF      equ     0ah             ; line feed
+fcblen  equ     32              ; byte size of File Control Block
 fnbflen equ     452             ; length of filename buffer
 fnlen   equ     11              ; length of 8.3 filename (8+3)
 dspace  equ     17              ; spacing between filenames in list
@@ -116,31 +114,31 @@ strtrow equ     3               ; first row of file list
 ; Start of actual program code here
 ; .org 100h - TPA area starts at 0x0100
 ;****************************************************
-        org	0100h		; entry point at 100 hex (TPA area)
-        lxi	h,0		; zero H/L register pair
-        dad	sp		; get stack pointer from CCP to H/L
-        shld	orgstk		; save original stack pointer to memory
-        lxi	sp,newstk	; set stack pointer to our new stack
+        org     0100h           ; entry point at 100 hex (TPA area)
+        lxi     h,0             ; zero H/L register pair
+        dad     sp              ; get stack pointer from CCP to H/L
+        shld    orgstk          ; save original stack pointer to memory
+        lxi     sp,newstk       ; set stack pointer to our new stack
 
         call    cls             ; clear terminal screen
         mvi     d,5             ; move cursor to line 5
         mvi     e,16            ; move cursor to column 16
         call    setcur          ; move cursor
-        mvi	c,strout	; load reg C with command to print string
-        lxi	d,welcom1	; point to address of welcome #1 string
-        call	sys		; call the system function to print string
+        mvi     c,strout        ; load reg C with command to print string
+        lxi     d,welcom1       ; point to address of welcome #1 string
+        call    sys             ; call the system function to print string
         mvi     d,6             ; move cursor to line 6
         mvi     e,13            ; move cursor to column 13
         call    setcur          ; move cursor
-        mvi	c,strout	; load reg C with command to print string
-        lxi	d,welcom2	; point to address of welcome #2 string
-        call	sys		; call the system function to print string
+        mvi     c,strout        ; load reg C with command to print string
+        lxi     d,welcom2       ; point to address of welcome #2 string
+        call    sys             ; call the system function to print string
         mvi     d,8             ; move cursor to line 8
         mvi     e,11            ; move cursor to column 11
         call    setcur          ; move cursor
-        mvi	c,strout	; load reg C with command to print string
-        lxi	d,welcom3	; point to address of welcome #3 string
-        call	sys		; call the system function to print string
+        mvi     c,strout        ; load reg C with command to print string
+        lxi     d,welcom3       ; point to address of welcome #3 string
+        call    sys             ; call the system function to print string
 
         mvi     c,conin         ; wait for keypress
         call    sys             ; waiting, key will be in A
@@ -247,6 +245,17 @@ cleanup:
         ret			; back to CCP, end of program
 
 
+
+;*************************************************
+; Debug/Test subroutines
+;*************************************************
+;
+; prnvars
+prnvars:
+        push
+
+
+
 ;*************************************************
 ; Start of subroutines
 ;*************************************************
@@ -257,27 +266,27 @@ cleanup:
 ;	reg A - character to print
 ; all registers preserved
 pchar:
-        push	h		; save registers that we'll
-        push	d		; be using
-        push	b
-        mvi	c,conout	; CP/M function for char out
-        mov	e,a		; char needs to be in Reg e
-        call	sys		; call CP/M to print
-        pop	b		;
-        pop	d		; restore registers
-        pop	h		; that were used
+        push    h               ; save registers that we'll
+        push    d               ; be using
+        push    b
+        mvi     c,conout        ; CP/M function for char out
+        mov     e,a             ; char needs to be in Reg e
+        call    sys             ; call CP/M to print
+        pop     b               ;
+        pop     d               ; restore registers
+        pop     h               ; that were used
         ret
 
 ;
 ; crlf
 ; output carriage return/linefeed to console out
 crlf:
-        push	psw		; save A reg
-        mvi	a,CR		; set A to carriage return
-        call	pchar		; go print it
-        mvi	a,LF		; set A to linefeed
-        call	pchar		; go print it
-        pop	psw		; restore A reg
+        push    psw             ; save A reg
+        mvi     a,CR            ; set A to carriage return
+        call    pchar           ; go print it
+        mvi     a,LF            ; set A to linefeed
+        call    pchar           ; go print it
+        pop     psw             ; restore A reg
         ret
 
 ;
@@ -285,15 +294,15 @@ crlf:
 ; Print low nibble in register A
 ; register A stomped
 pnib:
-        ani	0fh		; mask off upper nibble
-        cpi	10		; value of low nibble under 10?
-        jnc	pnib10		; nope, it's hex a-f, go there
-        adi	'0'		; add 30h to value (for ascii 0-9)
-        jmp	pnibprn		; print it out
+        ani     0fh             ; mask off upper nibble
+        cpi     10              ; value of low nibble under 10?
+        jnc     pnib10          ; nope, it's hex a-f, go there
+        adi     '0'             ; add 30h to value (for ascii 0-9)
+        jmp     pnibprn         ; print it out
 pnib10:
-        adi	'a'-10		; hex a-f, add ascii 'A' offset
+        adi     'a'-10          ; hex a-f, add ascii 'A' offset
 pnibprn:
-        call	pchar		; print
+        call    pchar           ; print
         ret
 
 ;
@@ -301,16 +310,16 @@ pnibprn:
 ; print hex (2 chars)
 ; IN char to print in register A
 phex:
-        push	psw		; save A register
-        rrc			;
-        rrc			; start with upper nibble
-        rrc			; so rotate bits right
-        rrc			; 4 bits
-        call	pnib		; print this upper nibble
-        pop	psw		; restore A register
-        push	psw		; save it again
-        call	pnib		; print lower nibble
-        pop	psw		; final restore before return
+        push    psw             ; save A register
+        rrc                     ;
+        rrc                     ; start with upper nibble
+        rrc                     ; so rotate bits right
+        rrc                     ; 4 bits
+        call    pnib            ; print this upper nibble
+        pop     psw             ; restore A register
+        push    psw             ; save it again
+        call    pnib            ; print lower nibble
+        pop     psw             ; final restore before return
         ret
 
 ; cin2uppr
@@ -464,58 +473,6 @@ b2asc4:
         ret
 
 ;
-; strlen
-; length of string (null terminated)
-; IN:
-;	D/E - addr of string
-; OUT:
-;	B/C - length of string
-; stomps A
-; stomps B/C
-strlen:
-        push 	d		; save addr of string
-        lxi	b,0		; zero out B/C pair
-slloop:
-        ldax	d		; get char pointed to by D/E
-        cpi	00h		; is it NULL (0)?
-        jz	sldone		; yup, get out
-        inx	b		; increment B/C
-        inx	d		; next char pointed to by H/L
-        jmp	slloop		; compare next
-sldone:
-        pop	d		; restore char pointer
-        ret
-
-;
-; strcmp
-; compare 2 strings
-; IN:
-;	B/C - addr of string 1
-;	D/E - addr of string 2
-; OUT:
-;	PSW flags (zero, plus, minus).  Zero flag means match
-strcmp:
-        push	h		; save H/L pair (using l)
-        push	b		; save addr of string 1
-        push	d		; save addr of string 2
-scloop:
-        ldax	b		; get char pointed to by B/C
-        mov	l,a		; save it in Reg l
-        ldax	d		; get char pointed to by D/E
-        cmp	l		; compare 2 characters
-        jnz	scdone		; done if they are not the same
-        inx	b		; next char of str 1
-        inx	d		; next char of str 2
-        cpi	0		; null? end of string?
-        jnz	scloop		; nope, next char
-scdone:
-        pop	d		; restore pointer to start of str 1
-        pop	b		; restore pointer to start of str 2
-        pop	h		; restore Reg H/L pair
-        ret			; all done!
-
-
-;
 ; memcpy
 ; memory copy from one buffer to another
 ; IN:
@@ -524,9 +481,9 @@ scdone:
 ;       D/E destination
 memcpy:
         push    psw             ; save a/status register
-        push	h		; save H/L pair (using l)
-        push	b		; save addr of source
-        push	d		; save addr of destination
+        push    h               ; save H/L pair (using l)
+        push    b               ; save addr of source
+        push    d               ; save addr of destination
         mov     l,a             ; save count to L
         cpi     0               ; initial compare, make sure there's
 mcploop:                        ; work to do
@@ -553,7 +510,7 @@ mcpdone:
 ;       B count of bytes to set
 ;       D/E buff
 memset:
-        push	d		; save addr of buffer
+        push    d               ; save addr of buffer
         push    psw             ; save set byte
         push    b               ; save count
         mov     a,b
@@ -1082,7 +1039,7 @@ prnui:
 ;***************************************************
 ; START OF FIXED DATA AREA
 ;***************************************************
-welcom1	db	'Altair 8800 File Manager$'
+welcom1 db      'Altair 8800 File Manager$'
 welcom2 db      '2026 Mattydyne Heavy Industries$'
 welcom3 db      '"H" for help, any other key to start',CR,LF,'$'
 nofiles db      'No files found!',CR,LF,'$'
@@ -1104,9 +1061,9 @@ flposn  ds      2               ; position in file name array
 flist   ds      512             ; area for list of filenames
 tags    ds      8               ; bitmap of tagged files
 esctmp  ds      24              ; temp area for building escape sequences
-orgstk	ds	2		; original stack pointer
+orgstk  ds      2               ; original stack pointer
 canary  ds      4               ; stack canary
-        ds	64		; 32 level stack
-newstk				; top of newstk area
+        ds      64              ; 32 level stack
+newstk                          ; top of newstk area
 
         end
