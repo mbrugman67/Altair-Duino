@@ -52,45 +52,45 @@ sys     equ     5               ; entry point for system (dos)
 ; Generally, drop this into C and do a call sys to
 ; do a syscall.  Some funcs require more stuffs.
 ;***************************************************
-reset   equ     0		; reset (reload CP/M)
-conin	equ     1		; console input (blocking)
-conout	equ     2		; console output function
-rdinp	equ     3		; paper tape reader input
-pnchout	equ     4		; paper tape puncher
-lstout	equ     5		; list output (printer)
-dirio	equ     6		; direct console I/O
-getio	equ     7		; get IOBYTE
-setio	equ     8		; set IOBYTE
-strout	equ     9		; string output function
-rdcbuf	equ     10		; read console buffer
-constat equ     11		; get console status
-version	equ     12		; get CP/M version
-rstdsk	equ     13		; reset disk system
-seldsk	equ     14		; select disk
-fopen   equ     15  		; open file
-fclose  equ     16  		; close file
-srchf   equ     17  		; search first file
-srchn   equ     18  		; search next file
-fdel    equ     19  		; delete file
-rdseq   equ     20  		; read sequential
-wrseq   equ     21  		; write sequential
-fmake   equ     22  		; make file
-fname   equ     23  		; rename file
-lvect   equ     24  		; return login vector
-getdsk	equ     25		; return current disk
-setdma	equ     26		; set DMA address
-alloc	equ     27		; get address (alloc)
-pdsk	equ     28		; protect disk
-getrov	equ     29		; get R/O vector
-setatt	equ     30		; set file attributes
-gdprarm	equ     31		; get address (disk params)
-gsuer	equ     32		; get/set user code
-rdrnd	equ     33		; read random
-wrrnd	equ     34		; write random
-fsize	equ     35		; compute file size
-frset	equ     36		; set random record
-rstdrv	equ     37		; reset drive
-wrtzer	equ     40		; write random with zero fill
+reset   equ     0               ; reset (reload CP/M)
+conin	equ     1               ; console input (blocking)
+conout	equ     2               ; console output function
+rdinp	equ     3               ; paper tape reader input
+pnchout	equ     4               ; paper tape puncher
+lstout	equ     5               ; list output (printer)
+dirio	equ     6               ; direct console I/O
+getio	equ     7               ; get IOBYTE
+setio	equ     8               ; set IOBYTE
+strout	equ     9               ; string output function
+rdcbuf	equ     10              ; read console buffer
+constat equ     11              ; get console status
+version	equ     12              ; get CP/M version
+rstdsk	equ     13              ; reset disk system
+seldsk	equ     14              ; select disk
+fopen   equ     15              ; open file
+fclose  equ     16              ; close file
+srchf   equ     17              ; search first file
+srchn   equ     18              ; search next file
+fdel    equ     19              ; delete file
+rdseq   equ     20              ; read sequential
+wrseq   equ     21              ; write sequential
+fmake   equ     22              ; make file
+fname   equ     23              ; rename file
+lvect   equ     24              ; return login vector
+getdsk	equ     25              ; return current disk
+setdma	equ     26              ; set DMA address
+alloc	equ     27              ; get address (alloc)
+pdsk	equ     28              ; protect disk
+getrov	equ     29              ; get R/O vector
+setatt	equ     30              ; set file attributes
+gdprarm	equ     31              ; get address (disk params)
+gsuer	equ     32              ; get/set user code
+rdrnd	equ     33              ; read random
+wrrnd	equ     34              ; write random
+fsize	equ     35              ; compute file size
+frset	equ     36              ; set random record
+rstdrv	equ     37              ; reset drive
+wrtzer	equ     40              ; write random with zero fill
 
 ;****************************************************
 ; CP/M constants/values/addresses
@@ -109,6 +109,7 @@ fnlen   equ     11              ; length of 8.3 filename (8+3)
 dspace  equ     17              ; spacing between filenames in list
 dsmax   equ     77              ; when to wrap filename list
 strtrow equ     3               ; first row of file list
+tagcnt  equ     8               ; number of tag bytes in array
 
 ;****************************************************
 ; Start of actual program code here
@@ -147,7 +148,8 @@ usrlp0:
         call    clrtags         ; clear all file tags
         call    listfls         ; load and list files
 uinext:                         ; user UI interaction loop
-        call    prnui           ; print user interface info & menu\
+        call    prnvars         ; print debug stuffs on line 2
+        call    prnui           ; print user interface info & menu
         call    cin2uppr        ; get user input (force to uppercase)
         cpi     'N'             ; Next file?
         jnz     uiprev          ; nope, check for previous file
@@ -157,8 +159,9 @@ uinext:                         ; user UI interaction loop
         dcr     a               ; decrement count for good compare
         cmp     b               ; compare to current file
         jz      uinxt2          ; are we at the last file?
-        lxi     h,flsel         ; increment selected
-        inr     m               ; file indicator
+        lda     flsel           ; increment selected
+        inr     a               ; file indicator
+        sta     flsel           ; save it
         jmp     uinext          ; next UI interaction
 uinxt2:
         lxi     h,flsel         ; wrap selected file variable
@@ -167,11 +170,11 @@ uinxt2:
 uiprev:
         cpi     'P'             ; "P" for previous file
         jnz     uitag           ; nope, check for tag/untag
-        lxi     h,flsel         ; get current selected file
-        mov     a,m             ; drop in A
-        cpi     0               ; are we already at zero?
+        lda     flsel           ; get current selected file
+        ora     a               ; are we already at zero?
         jz      uiprv2          ; yup, go set it to max count
-        dcr     m               ; decrement counter
+        dcr     a               ; decrement selection
+        sta     flsel           ; and save it
         jmp     uinext          ; next UI interaction
 uiprv2:
         lda     fcount          ; get filecount
@@ -202,18 +205,17 @@ tag3:
         call    setcur          ; move cursor to that spot
         lda     flsel           ; get selected file
         call    gettag          ; is this one already set?
-        jz      tag4            ;
-        call    clrtag
-        mvi     a,' '           ; set tag char
+        jz      tag4            ; flag is not set - go set it
+        lda     flsel           ; gotta get the selected file again
+        call    clrtag          ; clear the flag
+        mvi     a,' '           ; unmark char in UI
+        jmp     tag5            ; go print it
 tag4:
-        call    settag
-        mvi     a,'X'
+        lda     flsel           ; get file selection again
+        call    settag          ; set that flag
+        mvi     a,'X'           ; mark char in UI
+tag5:
         call    pchar           ; print it
-        mvi     d,2
-        mvi     e,1
-        call    setcur
-        lda     tags
-        call    phex
         jmp     uinext          ; next UI interaction
 
 uidel:
@@ -240,9 +242,9 @@ uiexit:
 ; restore original stack pointer, etc.
 ;*************************************************
 cleanup:
-        lhld	orgstk		; load original stack pointer to H/L pair
-        sphl			; set stack pointer from H/L pair
-        ret			; back to CCP, end of program
+        lhld    orgstk          ; load original stack pointer to H/L pair
+        sphl                    ; set stack pointer from H/L pair
+        ret                     ; back to CCP, end of program
 
 
 
@@ -252,8 +254,35 @@ cleanup:
 ;
 ; prnvars
 prnvars:
-        push
-
+        push    h               ;
+        push    d               ;
+        push    b               ;
+        push    psw             ;
+        mvi     d,2             ;
+        mvi     e,1             ;
+        call    setcur          ;
+        lda     flsel           ;
+        mov     l,a             ;
+        call    prn8            ;
+        mvi     a,' '           ;
+        call    pchar           ;
+        lxi     h,tags          ;
+        mvi     c,8             ;
+dbgl1:
+        dcr     c               ;
+        jz      dbgl2           ;
+        mov     a,m             ;
+        call    phex            ;
+        mvi     a,' '           ;
+        call    pchar           ;
+        inx     h               ;
+        jmp     dbgl1           ;
+dbgl2:
+        pop     psw             ;
+        pop     b               ;
+        pop     d               ;
+        pop     h               ;
+        ret
 
 
 ;*************************************************
@@ -379,6 +408,12 @@ prn8:
         push    h               ; save registers
         push    b
         push    d
+        mov     a,l             ; initial check for zero
+        ora     a               ; is it zero?
+        jnz     prn81           ; nope, continue later
+        mvi     a,'0'           ; print a zero
+        jmp     prn82           ; done here now
+prn81:
         mvi     b, 0            ; Used as a flag to skip printing leading zeroes
         lxi     d,-100          ; hundreds place
         call    pdec            ; go print it
@@ -386,6 +421,7 @@ prn8:
         call    pdec            ; go print it
         mov     a,l             ; get remaining ones place
         adi     '0'             ; offset for ascii
+prn82:
         call    pchar           ; and print it
         pop     d               ; restore registers
         pop     b
@@ -510,14 +546,12 @@ mcpdone:
 ;       B count of bytes to set
 ;       D/E buff
 memset:
-        push    d               ; save addr of buffer
-        push    psw             ; save set byte
-        push    b               ; save count
-        mov     a,b
-        cpi     0
-        pop     b
-        pop     psw
-        push    b
+        push    b               ;
+        push    d               ;
+        mov     c,a             ; save count
+        mov     a,b             ; move count for initial compare
+        cpi     0               ;
+        mov     a,c             ; get set value back
 mstloop:
         jz      mstdone         ; done setting, cleanup and return
         stax    d               ; set addr to desired values
@@ -533,38 +567,65 @@ mstdone:
 ; clrtags
 ; Clear all tags
 clrtags:
-        push    h
+        push    psw
         push    b
+        push    d
         mvi     b,8             ; 8 bytes of tags
-        lxi     h,tags          ; get the array of tags
-clrlp1:
-        dcr     b               ; decrement count, sets Z flag
-        jz      clrdn           ; are we done?
-        mvi     m,0             ; clear all bits
-        inx     h               ; next tag
-        jmp     clrlp1          ; go do it again
-clrdn:
+        lxi     d,tags          ; get the array of tags
+        mvi     b,tagcnt        ; number of bytes
+        mvi     a,0             ; value
+        call    memset          ; set them
         pop     b
-        pop     h
+        pop     d
+        pop     psw
         ret
 
 ;
 ; settags
 ; Set all tags
 settags:
-        push    h
+        push    psw
         push    b
+        push    d
         mvi     b,8             ; 8 bytes of tags
-        lxi     h,tags          ; get the array of tags
-setlp1:
-        dcr     b               ; decrement count, sets Z flag
-        jz      setdn           ; are we done?
-        mvi     m,0ffh          ; set all bits
-        inx     h               ; next tag
-        jmp     setlp1          ; go do it again
-setdn:
+        lxi     d,tags          ; get the array of tags
+        mvi     b,tagcnt        ; number of bytes
+        mvi     a,0ffh          ; value
+        call    memset          ; set them
         pop     b
-        pop     h
+        pop     d
+        pop     psw
+        ret
+
+;
+; findtag
+; find byte and bit of a tag given index
+; IN
+;       A - tag to find
+; OUT
+;       A - bit mask (desired bit set to 1)
+;       H/L - address of byte
+findtag:
+        mov     c,a             ; save original tag number
+        ani     0f8h            ; mask of lower 3 bits
+        rrc                     ; divide by
+        rrc                     ; eight is 3
+        rrc                     ; right shifts
+        lxi     d,0             ; set D/E to zero
+        mov     e,a             ; set D/E to be result of inx / 8
+        lxi     h,tags          ; get tag array
+        dad     d               ; H/L now has address of tag byte
+        mov     a,c             ; get that initial tag number back
+        ani     07h             ; bit number is lower 3 bits (0-7)
+        mov     c,a             ; save that number for now
+        ora     0               ; is it zero?
+        mvi     a,1             ; set bit zero
+fndtl1:
+        jz      fndtdon         ; we're done
+        rlc                     ; shift left one
+        dcr     c               ; decrement cnt, sets Z flag
+        jmp     fndtl1          ; next
+fndtdon:
         ret
 
 ;
@@ -578,26 +639,7 @@ gettag:
         push    b               ;
         push    d               ;
         push    h               ;
-        mov     c,a             ; save tag index
-        rrc                     ; divide by
-        rrc                     ; eight is 3
-        rrc                     ; right shifts
-        ani     0fh             ; mask off upper 8 bits
-        lxi     d,0             ; set D/E to zero
-        mov     e,a             ; set D/E to be result of inx / 8
-        lxi     h,tags          ; get tag array
-        dad     d               ; this is byte index!
-        mov     a,c             ; get original tag number
-        ani     07h             ; mask off lower 4 bits
-        mov     c,a             ; this is bit index!
-        cpi     0               ; initial check
-        mvi     a,1             ; set bit 1
-gtlp1:
-        jz      gttdne          ;
-        rlc                     ; shift left
-        dcr     c               ; decrement count, sets Z flag
-        jmp     gtlp1
-gttdne:
+        call    findtag         ; H/L now has byte, A has mask
         ana     m               ; AND with index byte to get result!
         pop     h               ;
         pop     d               ;
@@ -610,36 +652,15 @@ gttdne:
 ; IN
 ;       A - index of tag to set
 settag:
-        push    psw
         push    b               ;
         push    d               ;
         push    h               ;
-        mov     c,a             ; save tag index
-        rrc                     ; divide by
-        rrc                     ; eight is 3
-        rrc                     ; right shifts
-        ani     0fh             ; mask off upper 8 bits
-        lxi     d,0             ; set D/E to zero
-        mov     e,a             ; set D/E to be result of inx / 8
-        lxi     h,tags          ; get tag array
-        dad     d               ; this is byte index!
-        mov     a,c             ; get original tag number
-        ani     07h             ; mask off lower 4 bits
-        mov     c,a             ; this is bit index!
-        cpi     0               ; initial check
-        mvi     a,1             ; set bit 1
-stlp1:
-        jz      setdne          ;
-        rlc                     ; shift left
-        dcr     c               ; decrement count, sets Z flag
-        jmp     stlp1
-setdne:
+        call    findtag         ; H/L now has byte, A has mask
         ora     m               ; OR with index byte to get result!
         mov     m,a             ; save it back to array
         pop     h               ;
         pop     d               ;
         pop     b               ;
-        pop     psw             ;
         ret
 
 ;
@@ -651,27 +672,8 @@ clrtag:
         push    b               ;
         push    d               ;
         push    h               ;
-        mov     c,a             ; save tag index
-        rrc                     ; divide by
-        rrc                     ; eight is 3
-        rrc                     ; right shifts
-        ani     0fh             ; mask off upper 8 bits
-        lxi     d,0             ; set D/E to zero
-        mov     e,a             ; set D/E to be result of inx / 8
-        lxi     h,tags          ; get tag array
-        dad     d               ; this is byte index!
-        mov     a,c             ; get original tag number
-        ani     07h             ; mask off lower 4 bits
-        mov     c,a             ; this is bit index!
-        cpi     0               ; initial check
-        mvi     a,1             ; set bit 1
-cltlp1:
-        jz      cltdne          ;
-        rlc                     ; shift left
-        dcr     c               ; decrement count, sets Z flag
-        jmp     cltlp1
-cltdne:
-        xri     0ffh            ; complement the set bit
+        call    findtag         ; H/L now has byte, A has mask
+        xri     0ffh            ; XOR the set bit
         ana     m               ; AND with index byte to clear the bit
         mov     m,a             ; store it back to the array
         pop     h               ;
@@ -1059,7 +1061,7 @@ fcount  ds      2               ; file count addr
 flsel   ds      2               ; selected file number
 flposn  ds      2               ; position in file name array
 flist   ds      512             ; area for list of filenames
-tags    ds      8               ; bitmap of tagged files
+tags    ds      tagcnt          ; bitmap of tagged files
 esctmp  ds      24              ; temp area for building escape sequences
 orgstk  ds      2               ; original stack pointer
 canary  ds      4               ; stack canary
