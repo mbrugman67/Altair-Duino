@@ -103,7 +103,7 @@ dma1    equ     0080h           ; first DMA area 128 bytes
 ;*****************************************************
 CR      equ     0dh             ; carriage return
 LF      equ     0ah             ; line feed
-fcblen  equ     32              ; byte size of File Control Block
+fcblen  equ     36              ; byte size of File Control Block
 fnbflen equ     452             ; length of filename buffer
 fnlen   equ     11              ; length of 8.3 filename (8+3)
 dspace  equ     17              ; spacing between filenames in list
@@ -226,8 +226,39 @@ tag5:
         jmp     uinext          ; next UI interaction
 
 uidel:
-        cpi     'D'
-        jnz     uitype
+        cpi     'D'             ; Delete file(s)?
+        jnz     uitype          ; Nope, go check for type contents
+        call    cnttags         ; get count of tagged files
+        ora     a               ; is it zero?
+        jnz     del1            ; no? go do tagged stuffs
+dels1:
+        mvi     d,5             ; line 5
+        mvi     e,16            ; column 16
+        mvi     a,4             ; 4 blank lines
+        call    flower          ; draw a flower box
+        mvi     d,7             ; line 7
+        mvi     e,26            ; column 26
+        call    setcur          ; put cursor there
+        lxi     d,delmsg        ; "Delete file"... message
+        mvi     c,strout        ; print it
+        call    sys             ; syscall
+        call    prnname         ; print file name
+        lxi     d,uichyn        ; Yes/No prompt
+        mvi     c,strout        ; print
+        call    sys             ; syscall
+        call    cin2uppr        ; get user choice
+        cpi     'N'             ; user said nope
+        jz      usrlp0          ; redraw whole display
+        cpi     'Y'             ; user said yup
+        jz      dels2           ; oboy, here we go
+        jmp     dels1           ; something else, prompt again
+dels2:
+        call    bldfcb          ; set up a file control block
+        lxi     d,fcb1          ; point to the FCB1
+        mvi     c,fdel          ; syscall number to delete file
+        call    sys             ; do the syscall
+del1:
+        jmp     usrlp0
 
 uitype:
         cpi     'T'
@@ -819,6 +850,36 @@ clrtag:
         ret
 
 ;
+; bldfcb
+; Build a file control block using filename from
+; FLSEL's filename
+; resulting fcb1
+bldfcb:
+        push    psw             ;
+        push    b               ;
+        push    d               ;
+        push    h               ;
+        lxi     b,schfcb        ; set B/C to search value for find first
+        lxi     d,fcb1          ; set D/E to file control block 2
+        mvi     a,fcblen        ; 32 bytes to copy
+        call    memcpy          ; this sets up fcb1 with generic format
+        mvi     c,getdsk        ; get current disk number (A=0, etc)
+        call    sys             ; ask CP/M for it, return in A
+        sta     fcb1            ; first byte of fcb is drive number
+        call    setfptr         ; flposn is now set to start of filename
+        lhld    flposn          ; start of selected filename
+        mov     b,h             ;
+        mov     c,l
+        lxi     d,fcb1+1        ; start of FCB + 1
+        mvi     a,fnlen         ; 11 bytes in filename
+        call    memcpy          ; copy filename into fcb1]
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        pop     psw             ;
+        ret
+
+;
 ; first
 ; get first file FCB in directory
 ; RETURNS:
@@ -1212,6 +1273,9 @@ fndstr4 db      ' tagged)$'
 uistr1  db      'Currently selected file: $'
 uistr2  db      '(N-next,P-prev,SPACE-tag/untag,D-delete,$'
 uistr3  db      'C-copy,T-display,R-rename,?-help,X-exit)? $'
+delmsg  db      'Delete file $'
+uichyn  db      ' (Y/N)? $'
+uichyna db      ' (Y/N/A)? $'
 schfcb  db      0,'???????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 mworkng db      'Enumerating files in drive $'
 help1   db      'STEM - a basic file manager for CP/M 2.2 on Altair 8800',CR,LF,CR,LF,'$'
