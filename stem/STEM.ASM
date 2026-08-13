@@ -120,27 +120,34 @@ tagcnt  equ     8               ; number of tag bytes in array
         dad     sp              ; get stack pointer from CCP to H/L
         shld    orgstk          ; save original stack pointer to memory
         lxi     sp,newstk       ; set stack pointer to our new stack
-
-        call    cls             ; clear terminal screen
-        mvi     d,5             ; move cursor to line 5
-        mvi     e,16            ; move cursor to column 16
+        mvi     d,5             ; flower box at line 5
+        mvi     e,16            ; flower box at column 16
+        mvi     a,7             ; 7 blank lines in box
+        call    flower          ; print a flower box
+        mvi     d,7             ; line 7
+        mvi     e,35            ; column 35
+        call    setcur          ; move cursor
+        mvi     c,strout        ; print string func
+        lxi     d,stemver       ; version string
+        call    sys             ; print it
+        mvi     d,8             ; line 8
+        mvi     e,27            ; column 27
         call    setcur          ; move cursor
         mvi     c,strout        ; load reg C with command to print string
         lxi     d,welcom1       ; point to address of welcome #1 string
         call    sys             ; call the system function to print string
-        mvi     d,6             ; move cursor to line 6
-        mvi     e,13            ; move cursor to column 13
+        mvi     d,9             ; move cursor to line 9
+        mvi     e,25            ; move cursor to column 25
         call    setcur          ; move cursor
         mvi     c,strout        ; load reg C with command to print string
         lxi     d,welcom2       ; point to address of welcome #2 string
         call    sys             ; call the system function to print string
-        mvi     d,8             ; move cursor to line 8
-        mvi     e,11            ; move cursor to column 11
+        mvi     d,10            ; move cursor to line 10
+        mvi     e,22            ; move cursor to column 22
         call    setcur          ; move cursor
         mvi     c,strout        ; load reg C with command to print string
         lxi     d,welcom3       ; point to address of welcome #3 string
         call    sys             ; call the system function to print string
-
         mvi     c,conin         ; wait for keypress
         call    sys             ; waiting, key will be in A
 
@@ -221,7 +228,6 @@ tag5:
 uidel:
         cpi     'D'
         jnz     uitype
-        jmp     usrlp0          ; reload file list, then do UI interactions
 
 uitype:
         cpi     'T'
@@ -229,7 +235,15 @@ uitype:
 
 uiren:
         cpi     'R'
+        jnz     uihelp
+
+uihelp:
+        cpi     '?'
         jnz     uiexit
+        call    lsttgs
+        mvi     c,conin
+        call    sys
+        jmp     usrlp0
 
 uiexit:
         cpi     'X'
@@ -246,8 +260,6 @@ cleanup:
         sphl                    ; set stack pointer from H/L pair
         ret                     ; back to CCP, end of program
 
-
-
 ;*************************************************
 ; Debug/Test subroutines
 ;*************************************************
@@ -260,7 +272,7 @@ prnvars:
         push    psw             ;
         mvi     d,2             ;
         mvi     e,1             ;
-        call    setcur          ;
+        call    rstline         ;
         lda     flsel           ;
         mov     l,a             ;
         call    prn8            ;
@@ -284,6 +296,41 @@ dbgl2:
         pop     h               ;
         ret
 
+; lsttgs
+; List tagged files
+lsttgs:
+        push    h               ;
+        push    d               ;
+        push    b               ;
+        push    psw             ;
+        call    cls             ;
+        lda     flsel           ;
+        mov     e,a             ;
+        lda     fcount          ;
+        mov     d,a             ;
+        cpi     0               ;
+lstg1:
+        mov     a,d             ;
+        call    gettag          ;
+        jz      lstg2           ;
+        mov     a,d             ;
+        sta     flsel           ;
+        call    prnname         ;
+        call    crlf            ;
+lstg2:
+        mov     a,d             ;
+        ora     a               ;
+        jz      lstgdn          ;
+        dcr     d               ;
+        jmp     lstg1           ;
+lstgdn:
+        mov     a,e             ;
+        sta     flsel           ;
+        pop     psw             ;
+        pop     b               ;
+        pop     d               ;
+        pop     h               ;
+        ret
 
 ;*************************************************
 ; Start of subroutines
@@ -433,7 +480,7 @@ prn82:
 ; Internal subroutine to print decimal values from
 ; binary single or multibyte values.  To be called
 ; from prn16 or prn8 type subroutines
-; Uses B register!
+; Uses B register
 ;
 pdec:
         mvi     c,'0'-1         ; init C
@@ -459,7 +506,7 @@ pdecz:                          ; checking for leading zeroes
         mov     a,b             ; get the flag
         cpi     0               ; has it been set?
         jz      pdecr           ; it's a leading zero, just return
-        mov     a,c             ; get the zero back!
+        mov     a,c             ; get the zero back
         call    pchar           ; not a leading zero, print
 pdecr:
         ret
@@ -509,6 +556,60 @@ b2asc4:
         ret
 
 ;
+; flower
+; Print a "flower box" on the screen
+; IN
+;       A - number of rows
+;       D - start line
+;       D - start col
+flower:
+        push    psw             ;
+        push    b               ;
+        push    d               ;
+        push    h               ;
+        sta     tmp             ; save line count
+        call    setcur          ; put cursor at top left
+        lxi     d,flowr1        ; print top line
+        mvi     c,strout        ; print call
+        call    sys             ; go print it
+        lda     tmp             ;
+        cpi     0               ; initial check
+flwr1:
+        jz      flwr2           ; draw bottom line
+        dad     sp              ; get stack pointer H/L
+        lxi     h,3             ; H/L to 3 (position where D was pushed)
+        dad     sp              ; point to "pushed D"
+        mov     d,m             ; get original D (line number)
+        inr     d               ; increment
+        mov     m,d             ; save it (on stack)
+        dcx     h               ; E was pushed on stack one byte later (lower in RAM)
+        mov     e,m             ; put it back to E
+        call    setcur          ; put cursor there
+        lxi     d,flowr2        ; blank row in flowerbox
+        mvi     c,strout        ; print that
+        call    sys             ; let CP/M print it
+        lda     tmp             ; get count back
+        dcr     a               ; another line?
+        sta     tmp             ;
+        jnz     flwr1           ;
+flwr2:
+        dad     sp              ; get stack pointer H/L
+        lxi     h,3             ; H/L to 3 (position where D was pushed)
+        dad     sp              ; point to "pushed D"
+        mov     d,m             ; get original D (line number)
+        dcx     h               ; E was pushed on stack one byte later (lower in RAM)
+        mov     e,m             ; put it back to E
+        call    setcur          ; put cursor there
+        lxi     d,flowr1        ; bottom line
+        mvi     c,strout        ; print func
+        call    sys             ; print it
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        pop     psw             ;
+        ret
+
+;
 ; memcpy
 ; memory copy from one buffer to another
 ; IN:
@@ -540,7 +641,7 @@ mcpdone:
 ;
 ; memset
 ; set a buffer to a fixed byte value.
-; THIS VERSION ONLY DOES UP TO 255 BYTES!
+; THIS VERSION ONLY DOES UP TO 255 BYTES
 ; IN:
 ;       A byte value to set buffer to
 ;       B count of bytes to set
@@ -598,6 +699,42 @@ settags:
         ret
 
 ;
+; cnttags
+; Count all set tag bits in tag array
+; OUT
+;       A - sum of set bits in array
+cnttags:
+        push    b               ;
+        push    d               ;
+        push    h               ;
+        mvi     e,0             ; zero E (temporary count)
+        lxi     h,tags          ; get the tag array
+        mvi     d,tagcnt        ; get number of bytes in tag array
+cttgs1:                         ; loop through all bytes in array
+        mvi     a,1             ; bit 1
+        mvi     c,9             ; 8 bits in a byte (add 1 for pre-decrement)
+cttgs2:                         ; loop through all bits in current byte
+        dcr     c               ; down a bit
+        jz      cttgs4          ; done with this byte
+        mov     b,a             ; save bit
+        ana     m               ; check this bit against current byte
+        jz      cttgs3          ; bit not set
+        inr     e               ; bit was set, count it
+cttgs3:
+        mov     a,b             ; restore bit before shift
+        rlc                     ; increment bit position
+        jmp     cttgs2          ; go count next bit
+cttgs4:
+        inx     h               ; next byte
+        dcr     d               ; decrement byte counter
+        jnz     cttgs1          ; go count bits in this byte
+        mov     a,e             ; final result in A
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        ret
+
+;
 ; findtag
 ; find byte and bit of a tag given index
 ; IN
@@ -640,7 +777,7 @@ gettag:
         push    d               ;
         push    h               ;
         call    findtag         ; H/L now has byte, A has mask
-        ana     m               ; AND with index byte to get result!
+        ana     m               ; AND with index byte to get result
         pop     h               ;
         pop     d               ;
         pop     b               ;
@@ -656,7 +793,7 @@ settag:
         push    d               ;
         push    h               ;
         call    findtag         ; H/L now has byte, A has mask
-        ora     m               ; OR with index byte to get result!
+        ora     m               ; OR with index byte to get result
         mov     m,a             ; save it back to array
         pop     h               ;
         pop     d               ;
@@ -709,7 +846,7 @@ nextf:
         mvi     c,srchn         ; search next file function
         call    sys             ; call CP/M, result in A
         cpi     255             ; compare to 0xff - no file found
-        jz      nextdone        ; no file was found!
+        jz      nextdone        ; no file was found
         rlc                     ;
         rlc                     ; do 5 left shifts on the A
         rlc                     ; register,
@@ -785,31 +922,32 @@ setcur:
         pop     d               ; restore D/E
         pop     b               ; restore B/C
         pop     psw             ; restore A and PSW
-        ret                     ; bye!
+        ret                     ; bye
 
 ;
 ; rstline
-; Clear current line and reset cursor to d,e
+; Clear current line
 ;
 rstline:
         push    d
         push    h
-        lxi     h,esctmp
-        mvi     m,01bh
-        inx     h
-        mvi     m,'['
-        inx     h
-        mvi     m,'2'
-        inx     h
-        mvi     m,'K'
-        inx     h
-        mvi     m,'$'
-        mvi     c,strout
-        lxi     d,esctmp
-        call    sys
+        call    setcur          ; put cursor on correct line
+        lxi     h,esctmp        ; get sequence buffer
+        mvi     m,01bh          ;
+        inx     h               ;
+        mvi     m,'['           ;
+        inx     h               ;
+        mvi     m,'2'           ;
+        inx     h               ;
+        mvi     m,'K'           ;
+        inx     h               ;
+        mvi     m,'$'           ;
+        mvi     c,strout        ; send it to the console
+        lxi     d,esctmp        ;
+        call    sys             ;
         pop     h
         pop     d
-        call    setcur
+        call    setcur          ; replace the cursor
         ret
 ;
 ; enumdir
@@ -827,7 +965,7 @@ enumdir:
         mvi     m,0             ; zero that, too
         call    first           ; find first file, FCB is in B/C
         cpi     0ffh            ; compare a to 255; 255 means no file found
-        jnz     frstok          ; we found a file!
+        jnz     frstok          ; we found a file
         mvi     c,strout        ; gonna print a string
         lxi     d,nofiles       ; msg: no files on disk
         jmp     enumret         ; we're all done here
@@ -860,7 +998,42 @@ nxtfl:
         inr     m               ; increment
         jmp     nxtfl           ; go try again
 enumret:
-        ret                     ; all done!
+        ret                     ; all done
+
+;
+; setfptr
+; Set flposn to point to the start position of
+; the selected file in the filename buffer
+; Selected file identified by FLSEL
+setfptr:
+        push    psw
+        push    b
+        push    d
+        push    h
+        lda     flsel           ; get selected file number
+        mov     b,a             ; save selected to B
+        mvi     c,0             ; zero current file index
+        lxi     h,flposn        ; get the pointer
+        mvi     h,0             ; zero it
+        mvi     l,0             ; zeroing
+        lxi     d,flist         ; start of filename list buffer in D/E
+        dad     d               ; set flposn pointer to be start of buffer
+        mvi     d,0             ; filename in buffer is 11
+        mvi     e,11            ; bytes long, load D/E with 11
+setfp1:
+        mov     a,c             ; get current index
+        cmp     b               ; is it the desired filename?
+        jz      setfp2          ; yup, we're done
+        dad     d               ; add 11 to the current flist pointer value
+        inr     c               ; incrment file number
+        jmp     setfp1          ; go and increment again
+setfp2:
+        shld    flposn          ; save the position
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        pop     psw             ;
+        ret
 
 ;
 ; prnname
@@ -873,39 +1046,27 @@ prnname:
         push    b
         push    d
         push    h
-        lda     flsel           ; get selected file number
-        mov     b,a             ; save selected to B
-        mvi     c,0             ; zero current file index
-        lxi     h,flist         ; start of filename list buffer in H/L
-        mvi     d,0             ; filename in buffer is 11
-        mvi     e,11            ; bytes long, load D/E with 11
-prnnm1:
-        mov     a,c             ; get current index
-        cmp     b               ; is it the desired filename?
-        jz      prnnm2          ; yup, go print it
-        dad     d               ; add it to the current flist pointer value
-        inr     c               ; incrment file number
-        jmp     prnnm1;         ; go and increment again
-prnnm2
+        call    setfptr         ; set flposn pointer with start of filename
+        lhld    flposn          ; load the pointer into H/L
         mvi     d,8             ; 8 characters in filename portion
-prnnm3:
+prnnm2:
         mov     a,m             ; get next char
         inx     h               ; increment buffer pointer
         cpi     ' '             ; is it a space?
-        jz      prnnm4          ; don't print a space
+        jz      prnnm3          ; don't print a space
         call    pchar           ; print non-space char
-prnnm4:
+prnnm3:
         dcr     d               ; decrement count, sets Z flag
-        jnz     prnnm3          ; more to print
+        jnz     prnnm2          ; more to print
         mvi     a,'.'           ; delimiter
         call    pchar           ; print it
         mvi     d,3             ; 3 chars in extension portion
-prnnm5:
+prnnm4:
         mov     a,m             ; get next char
         inx     h               ; increment buffer pointer
         call    pchar           ; print it
         dcr     d               ; decrement char count, sets Z flag
-        jnz     prnnm5          ; nope, guess not :/
+        jnz     prnnm4          ; nope, guess not :/
         pop     h
         pop     d
         pop     b
@@ -931,7 +1092,6 @@ fndisp
         mov     c,a             ; save file count
         mvi     d,strtrow       ; first line to use
         mvi     e,1             ; start in column 1
-        lxi     h,flist         ; get buffer address
 fndlp:
         call    setcur          ; move cursor there
         mvi     a,'['           ; print
@@ -941,8 +1101,9 @@ fndlp:
         mvi     a,']'           ; and 'X'
         call    pchar           ; inidicating selection
         call    prnname         ; print filename
-        lxi     h,flsel         ; get selected file number
-        inr     m               ; and increment it
+        lda     flsel           ; get selected file number
+        inr     a               ; and increment it
+        sta     flsel           ; save it
         mov     a,e             ; get column start
         adi     dspace          ; bump it up for next set of files
         mov     e,a             ; save it for now
@@ -958,7 +1119,7 @@ fnddone:
         pop     d               ; restore D/E
         pop     b               ; restore B/C
         pop     psw             ; restore A and PSW
-        ret                     ; all done!
+        ret                     ; all done
 
 ;
 ; listfls
@@ -966,22 +1127,26 @@ fnddone:
 ;
 listfls:
         call    cls             ; clear
-        lxi     d,mworkng       ; message "Enumerating files"...
-        mvi     c,strout        ; print string to terminal
-        call    sys             ; call CP/M to do it
-        mvi     c,getdsk        ; get current disk number (A=0, etc)
-        call    sys             ; ask CP/M for it, return in A
-        adi     'A'             ; bias for ASCII
-        call    pchar           ; print that
-        mvi     a,':'           ; trailing colon after drive letter
-        call    pchar           ; print to terminal
-
         call    enumdir         ; get the listing for the logged drive,
                                 ; names stored in buffer, not printed yet
+        call    fndisp          ; formatted listing of filenames
+        lda     flsel           ; reload selected file number
+        mvi     a,0             ; and reset to zero
+        sta     flsel           ; store it
+        ret
 
+;
+; prnui
+; Print "user interface" section
+;
+prnui:
+        push    psw             ; save A and PSW
+        push    b               ; save B/C
+        push    d               ; save D/E
+        push    h               ; save H/L
         mvi     d,1             ; new cursor position, line 1
-        mvi     e,27            ; column 27
-        call    rstline         ; clear current line, put cursor in position
+        mvi     e,20            ; column 22
+        call    rstline         ; clear current line,
         mvi     c,strout        ; print string
         lxi     d,fndstr1       ; "Listing of drive " message
         call    sys             ; CP/M
@@ -997,68 +1162,67 @@ listfls:
         lhld    fcount          ; get file count
         call    prn8            ; print it as decimal
         mvi     c,strout        ; print string
-        lxi     d,fndstr3       ; final part of header
+        lxi     d,fndstr3       ; next part of header
         call    sys             ; print to terminal
-
-        call    fndisp          ; formatted listing of filenames
-        lxi     h,flsel         ; reload selected file number
-        mvi     m,0             ; and reset to zero
-        ret
-
-;
-; prnui
-; Print "user interface" section
-;
-prnui:
-        push    psw             ; save A and PSW
-        push    b               ; save B/C
-        push    d               ; save D/E
-        push    h               ; save H/L
+        call    cnttags         ; get count of tagged files
+        mov     l,a             ; it was in A, move to L for
+        call    prn8            ; printing as 8-bit decimal
+        mvi     a,' '           ; another space
+        call    pchar           ; to print
+        lxi     d,fndstr4       ; final part of top line
+        mvi     c,strout        ; print string
+        call    sys             ; syscall
         mvi     d,20            ; go to line 20
         mvi     e,1             ; column 1
-        call    setcur          ;
-        call    rstline         ; and put the cursor there & clear line
+        call    rstline         ; clear line
         lxi     d,uistr1        ; "Current file..." message
         mvi     c,strout        ; string out syscall
         call    sys             ; make the syscall
         call    prnname         ; print selected filename
         mvi     d,21            ; go to line 21
         mvi     e,1             ; column 1
-        call    setcur          ;
-        call    rstline         ; and put the cursor there & clear line
+        call    rstline         ; clear line
         lxi     d,uistr2        ; second UI line
         mvi     c,strout        ; print string
         call    sys             ; let cpm print it
         lxi     d,uistr3        ; second UI line
         mvi     c,strout        ; print string
         call    sys             ; let cpm print it
+xret:
         pop     h               ; restore H/L
         pop     d               ; restore D/E
         pop     b               ; restore B/C
         pop     psw             ; restore A and PSW
-        ret                     ; all done!
+        ret                     ; all done
 
 ;***************************************************
 ; START OF FIXED DATA AREA
 ;***************************************************
-welcom1 db      'Altair 8800 File Manager$'
+flowr1  db      '+--------------------------------------------------+$'
+flowr2  db      '|                                                  |$'
+stemver db      'STEM v0.9.0$'
+welcom1 db      'An Altair 8800 File Manager$'
 welcom2 db      '2026 Mattydyne Heavy Industries$'
 welcom3 db      '"H" for help, any other key to start',CR,LF,'$'
-nofiles db      'No files found!',CR,LF,'$'
+nofiles db      'No files found',CR,LF,'$'
 fndstr1 db      'Listing of drive $'
 fndstr2 db      ' (total of $'
-fndstr3 db      ' files)$'
+fndstr3 db      ' files, $'
+fndstr4 db      ' tagged)$'
 uistr1  db      'Currently selected file: $'
 uistr2  db      '(N-next,P-prev,SPACE-tag/untag,D-delete,$'
-uistr3  db      'C-copy,T-display,R-rename,X-exit)? $'
+uistr3  db      'C-copy,T-display,R-rename,?-help,X-exit)? $'
 schfcb  db      0,'???????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 mworkng db      'Enumerating files in drive $'
+help1   db      'STEM - a basic file manager for CP/M 2.2 on Altair 8800',CR,LF,CR,LF,'$'
+
 
 ;***************************************************
 ; START OF VARIABLE DATA AREA
 ;***************************************************
 fcount  ds      2               ; file count addr
 flsel   ds      2               ; selected file number
+tmp     ds      2               ; temporary storage
 flposn  ds      2               ; position in file name array
 flist   ds      512             ; area for list of filenames
 tags    ds      tagcnt          ; bitmap of tagged files
