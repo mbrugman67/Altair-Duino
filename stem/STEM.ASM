@@ -109,20 +109,37 @@ fnlen   equ     11              ; length of 8.3 filename (8+3)
 dspace  equ     17              ; spacing between filenames in list
 dsmax   equ     77              ; when to wrap filename list
 strtrow equ     3               ; first row of file list
-tagcnt  equ     8               ; number of tag bytes in array
+maxfls  equ     70              ; max files in buffer
+tagcnt  equ     maxfls/8+1      ; number of tag bytes in array
 
 ;****************************************************
 ; Start of actual program code here
 ; .org 100h - TPA area starts at 0x0100
 ;****************************************************
         org     0100h           ; entry point at 100 hex (TPA area)
+        lxi     b,canary        ; point to fixed canary value
+        lxi     d,stkcny        ; point to last 4 bytes under stack
+        ldax    b               ; read fixed byte
+        stax    d               ; write to canary
+        inx     b               ; increment
+        inx     d               ; increment
+        ldax    b               ; read fixed byte
+        stax    d               ; write to canary
+        inx     b               ; increment
+        inx     d               ; increment
+        ldax    b               ; read fixed byte
+        stax    d               ; write to canary
+        inx     b               ; increment
+        inx     d               ; increment
+        ldax    b               ; read fixed byte
+        stax    d               ; write to canary
         lxi     h,0             ; zero H/L register pair
         dad     sp              ; get stack pointer from CCP to H/L
         shld    orgstk          ; save original stack pointer to memory
         lxi     sp,newstk       ; set stack pointer to our new stack
         mvi     d,5             ; flower box at line 5
         mvi     e,16            ; flower box at column 16
-        mvi     a,7             ; 7 blank lines in box
+        mvi     a,8             ; 8 blank lines in box
         call    flower          ; print a flower box
         mvi     d,7             ; line 7
         mvi     e,35            ; column 35
@@ -142,7 +159,7 @@ tagcnt  equ     8               ; number of tag bytes in array
         mvi     c,strout        ; load reg C with command to print string
         lxi     d,welcom2       ; point to address of welcome #2 string
         call    sys             ; call the system function to print string
-        mvi     d,10            ; move cursor to line 10
+        mvi     d,11            ; move cursor to line 11
         mvi     e,22            ; move cursor to column 22
         call    setcur          ; move cursor
         mvi     c,strout        ; load reg C with command to print string
@@ -155,6 +172,16 @@ usrlp0:
         call    clrtags         ; clear all file tags
         call    listfls         ; load and list files
 uinext:                         ; user UI interaction loop
+        call    stkchk          ; check stack integrity
+        ora     a               ; stack is OK
+        jz      cont            ; continue on
+        call    crlf            ; newline
+        lxi     d,errcan        ; stack error message
+        mvi     c,strout        ; print it
+        call    sys             ; print it
+        jmp     cleanup         ; get outta here
+
+cont:
         call    prnvars         ; print debug stuffs on line 2
         call    prnui           ; print user interface info & menu
         call    cin2uppr        ; get user input (force to uppercase)
@@ -269,12 +296,49 @@ uiren:
         jnz     uihelp
 
 uihelp:
-        cpi     '?'
-        jnz     uiexit
-        call    lsttgs
+        cpi     'H'
+        jnz     uilog
+        mvi     d,16
+        mvi     e,1
+        call    setcur
+uihlp1:
+        call    itertgs
+        cpi     0
+        jnz     uihlp2
+        call    prnname
+        mvi     a,' '
+        call    pchar
+        jmp     uihlp1
+uihlp2:
         mvi     c,conin
         call    sys
         jmp     usrlp0
+
+uilog:
+        cpi     'L'             ; Log disk?
+        jnz     uiexit          ; Nope - check for exit
+uilog1:
+        mvi     d,5             ; line 5
+        mvi     e,16            ; column 16
+        mvi     a,4             ; 4 blank lines
+        call    flower          ; draw a flower box
+        mvi     d,7             ; line 7
+        mvi     e,26            ; column 26
+        call    setcur          ; put cursor there
+        lxi     d,logmsg        ; "select disk" message
+        mvi     c,strout        ; print
+        call    sys             ; syscall
+        call    cin2uppr        ; get user input
+        cpi     'A'             ; lowest drive
+        jm      uilog1          ; bad input
+        cpi     'P'             ; highest drive
+        jp      uilog1          ; bad input
+        sui     'A'             ; move from 'A' to 0, etc
+        mov     e,a             ; move to D for syscall
+        mvi     c,seldsk        ; select disk
+        call    sys             ; syscall
+        jmp     usrlp0          ;
+
 
 uiexit:
         cpi     'X'
@@ -310,7 +374,7 @@ prnvars:
         mvi     a,' '           ;
         call    pchar           ;
         lxi     h,tags          ;
-        mvi     c,8             ;
+        mvi     c,tagcnt        ;
 dbgl1:
         dcr     c               ;
         jz      dbgl2           ;
@@ -327,46 +391,42 @@ dbgl2:
         pop     h               ;
         ret
 
-; lsttgs
-; List tagged files
-lsttgs:
-        push    h               ;
-        push    d               ;
-        push    b               ;
-        push    psw             ;
-        call    cls             ;
-        lda     flsel           ;
-        mov     e,a             ;
-        lda     fcount          ;
-        mov     d,a             ;
-        cpi     0               ;
-lstg1:
-        mov     a,d             ;
-        call    gettag          ;
-        jz      lstg2           ;
-        mov     a,d             ;
-        sta     flsel           ;
-        call    prnname         ;
-        call    crlf            ;
-lstg2:
-        mov     a,d             ;
-        ora     a               ;
-        jz      lstgdn          ;
-        dcr     d               ;
-        jmp     lstg1           ;
-lstgdn:
-        mov     a,e             ;
-        sta     flsel           ;
-        pop     psw             ;
-        pop     b               ;
-        pop     d               ;
-        pop     h               ;
-        ret
 
 ;*************************************************
 ; Start of subroutines
 ;*************************************************
 ;
+;stkchk
+; Check integrity of stack (look for a blown stack)
+; OUT:
+;       A-255 stack was blown
+stkchk:
+        lxi     b,canary        ; get fixed value address
+        lxi     h,stkcny        ; get last 4 bytes under stack
+        ldax    b               ; get byte
+        cmp     m               ; compare
+        jnz     stkblwn         ; stack is corrupt
+        inx     b               ; next byte
+        inx     h               ; next byte
+        ldax    b               ; get byte
+        cmp     m               ; compare
+        jnz     stkblwn         ; stack is corrupt
+        inx     b               ; next byte
+        inx     h               ; next byte
+        ldax    b               ; get byte
+        cmp     m               ; compare
+        jnz     stkblwn         ; stack is corrupt
+        inx     b               ; next byte
+        inx     h               ; next byte
+        ldax    b               ; get byte
+        cmp     m               ; compare
+        jnz     stkblwn         ; stack is corrupt
+        mvi     a,0             ; stack is good
+        ret                     ; all done
+stkblwn:
+        mvi     a,0ffh          ; set flag
+        ret
+
 ; pchar
 ; print a character to console out
 ; IN:
@@ -702,7 +762,7 @@ clrtags:
         push    psw
         push    b
         push    d
-        mvi     b,8             ; 8 bytes of tags
+        mvi     b,tagcnt        ; array of bytes of tags
         lxi     d,tags          ; get the array of tags
         mvi     b,tagcnt        ; number of bytes
         mvi     a,0             ; value
@@ -719,7 +779,7 @@ settags:
         push    psw
         push    b
         push    d
-        mvi     b,8             ; 8 bytes of tags
+        mvi     b,tagcnt        ; array of bytes of tags
         lxi     d,tags          ; get the array of tags
         mvi     b,tagcnt        ; number of bytes
         mvi     a,0ffh          ; value
@@ -760,6 +820,42 @@ cttgs4:
         dcr     d               ; decrement byte counter
         jnz     cttgs1          ; go count bits in this byte
         mov     a,e             ; final result in A
+        pop     h               ;
+        pop     d               ;
+        pop     b               ;
+        ret
+
+;
+; itertgs
+; Iterate through tagged files.  Sets FLSEL to
+; next tagged file, then clears that tag.
+; OUT:
+;       A - 0ffh if no tagged files
+itertgs:
+        push    b               ;
+        push    d               ;
+        push    h               ;
+        lda     fcount          ; get file count
+        mov     d,a             ; save to D
+iter1:
+        mov     a,d             ; get current index
+        call    gettag          ; is that tag set?
+        jz      iter2           ; nope - try next
+        mov     a,d             ; get that count again
+        call    clrtag          ; clear it
+        mov     a,d             ; once again..
+        sta     flsel           ; store it as the selected file
+        mvi     a,0             ; set OK response
+        jmp     iterdn          ; return
+iter2:
+        mov     a,d             ; get current index again
+        ora     a               ; check for zero (last one)
+        jz      iter3           ; go set no files flag
+        dcr     d               ; decrement index
+        jmp     iter1           ; try again
+iter3:
+        mvi     a,0ffh          ; no file flag
+iterdn:
         pop     h               ;
         pop     d               ;
         pop     b               ;
@@ -865,6 +961,7 @@ bldfcb:
         call    memcpy          ; this sets up fcb1 with generic format
         mvi     c,getdsk        ; get current disk number (A=0, etc)
         call    sys             ; ask CP/M for it, return in A
+        inr     a               ; A=1
         sta     fcb1            ; first byte of fcb is drive number
         call    setfptr         ; flposn is now set to start of filename
         lhld    flposn          ; start of selected filename
@@ -1215,10 +1312,10 @@ prnui:
         call    sys             ; ask CP/M for it, return in A
         adi     'A'             ; bias for ASCII
         call    pchar           ; print that
-        mvi     c,strout        ; print string
         mvi     a,':'           ; trailing colon after drive letter
         call    pchar           ; print to terminal
         lxi     d,fndstr2       ; " (total of  " message
+        mvi     c,strout        ; print string
         call    sys             ; CP/M
         lhld    fcount          ; get file count
         call    prn8            ; print it as decimal
@@ -1239,14 +1336,17 @@ prnui:
         lxi     d,uistr1        ; "Current file..." message
         mvi     c,strout        ; string out syscall
         call    sys             ; make the syscall
+        lxi     d,uibold        ; set bold font
+        mvi     c,strout        ; print
+        call    sys             ; print it
         call    prnname         ; print selected filename
+        lxi     d,uireset       ; clear formatting
+        mvi     c,strout        ; print
+        call    sys             ; print it
         mvi     d,21            ; go to line 21
         mvi     e,1             ; column 1
         call    rstline         ; clear line
         lxi     d,uistr2        ; second UI line
-        mvi     c,strout        ; print string
-        call    sys             ; let cpm print it
-        lxi     d,uistr3        ; second UI line
         mvi     c,strout        ; print string
         call    sys             ; let cpm print it
 xret:
@@ -1259,41 +1359,46 @@ xret:
 ;***************************************************
 ; START OF FIXED DATA AREA
 ;***************************************************
+canary  db      0beh,0efh,0cah,0feh
+errcan  db      'ERROR - Stack is corrupt!',CR,LF,'$'
 flowr1  db      '+--------------------------------------------------+$'
 flowr2  db      '|                                                  |$'
 stemver db      'STEM v0.9.0$'
 welcom1 db      'An Altair 8800 File Manager$'
 welcom2 db      '2026 Mattydyne Heavy Industries$'
-welcom3 db      '"H" for help, any other key to start',CR,LF,'$'
+welcom3 db      01bh,'[1m"H" for help, any other key to start',01bh,'[0m',CR,LF,'$'
 nofiles db      'No files found',CR,LF,'$'
 fndstr1 db      'Listing of drive $'
 fndstr2 db      ' (total of $'
 fndstr3 db      ' files, $'
 fndstr4 db      ' tagged)$'
-uistr1  db      'Currently selected file: $'
-uistr2  db      '(N-next,P-prev,SPACE-tag/untag,D-delete,$'
-uistr3  db      'C-copy,T-display,R-rename,?-help,X-exit)? $'
+uibold  db      01bh,'[1m$'
+uireset db      01bh,'[0m$'
+uistr1  db      'Currently selected file (N/P-next/previous,Space-tag/untag): $'
+uistr2  db      'Command(D-delete,C-copy,T-display,R-rename,H-help,X-exit)? $'
 delmsg  db      'Delete file $'
 uichyn  db      ' (Y/N)? $'
 uichyna db      ' (Y/N/A)? $'
+logmsg  db      'Select new disk letter: $'
 schfcb  db      0,'???????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 mworkng db      'Enumerating files in drive $'
 help1   db      'STEM - a basic file manager for CP/M 2.2 on Altair 8800',CR,LF,CR,LF,'$'
 
 
+
 ;***************************************************
 ; START OF VARIABLE DATA AREA
 ;***************************************************
+orgstk  ds      2               ; original stack pointer
 fcount  ds      2               ; file count addr
 flsel   ds      2               ; selected file number
 tmp     ds      2               ; temporary storage
 flposn  ds      2               ; position in file name array
-flist   ds      512             ; area for list of filenames
+flist   ds      maxfls*11+1     ; area for list of filenames
 tags    ds      tagcnt          ; bitmap of tagged files
 esctmp  ds      24              ; temp area for building escape sequences
-orgstk  ds      2               ; original stack pointer
-canary  ds      4               ; stack canary
-        ds      64              ; 32 level stack
+stkcny  ds      4               ; stack canary
+usrstk  ds      64              ; 32 level stack
 newstk                          ; top of newstk area
 
         end
