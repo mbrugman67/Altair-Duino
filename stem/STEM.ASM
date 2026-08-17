@@ -137,6 +137,9 @@ tagcnt  equ     maxfls/8+1      ; number of tag bytes in array
         dad     sp              ; get stack pointer from CCP to H/L
         shld    orgstk          ; save original stack pointer to memory
         lxi     sp,newstk       ; set stack pointer to our new stack
+        mvi     c,gdprarm       ; syscall code for get DPH address
+        call    sys             ; do the syscall
+        shld    dpbase          ; save it for later
         mvi     d,5             ; flower box at line 5
         mvi     e,16            ; flower box at column 16
         mvi     a,8             ; 8 blank lines in box
@@ -331,14 +334,35 @@ uilog1:
         call    cin2uppr        ; get user input
         cpi     'A'             ; lowest drive
         jm      uilog1          ; bad input
-        cpi     'P'             ; highest drive
+        cpi     'Q'             ; highest drive
         jp      uilog1          ; bad input
+        sta     drvtmp          ; save drive letter in temp
         sui     'A'             ; move from 'A' to 0, etc
         mov     e,a             ; move to D for syscall
+        call    isdskok         ; check to see if disk is online
+        jz      uilog2          ; it is not!
         mvi     c,seldsk        ; select disk
         call    sys             ; syscall
         jmp     usrlp0          ;
-
+uilog2:
+        mvi     d,5             ; line 5
+        mvi     e,16            ; column 16
+        mvi     a,4             ; 4 blank lines
+        call    flower          ; draw a flower box
+        mvi     d,7             ; line 7
+        mvi     e,19            ; column 26
+        call    setcur          ; put cursor there
+        lxi     d,logerr        ; error message
+        mvi     c,strout        ; print it
+        call    sys             ; do the syscall
+        mvi     d,7             ; line 7
+        mvi     e,24            ; move to placeholder for drive letter
+        call    setcur          ; set cursor there
+        lda     drvtmp          ; get the drive letter from user input
+        call    pchar           ; drop it into message
+        mvi     c,conin         ; wait for input
+        call    sys             ; syscall
+        jmp     usrlp0          ; go back to file list
 
 uiexit:
         cpi     'X'
@@ -425,6 +449,41 @@ stkchk:
         ret                     ; all done
 stkblwn:
         mvi     a,0ffh          ; set flag
+        ret
+
+; isdskok
+; Check if selected disk is online
+; IN:
+;       A - disk number (A=0, B=1, etc)
+; OUT:
+;       A - zero means disk offline
+isdskok:
+        push    b               ;
+        push    h               ;
+        push    psw             ; syscall will stomp A
+        mvi     c,lvect         ; get the "log in vector", a bitmap of OK drives
+        call    sys             ; do the syscall
+        pop     psw             ; restore A
+        cpi     8               ; are we talking drives 0 to 7?
+        jm      dskoklo         ; low byte
+        mov     b,h             ; selected drive is in the H register
+        sbi     8               ; subtract 8 from A
+        jmp     isdsk1
+dskoklo:
+        mov     b,l
+isdsk1:
+        mov     c,a             ; get inx into C
+        ora     a               ; initial check for zero
+        mvi     a,1             ; set first bit
+isdsk2:
+        jz      isdsk3          ; done shifting
+        rlc                     ; shift
+        dcr     c               ; sets zero flag
+        jmp     isdsk2          ; shift again
+isdsk3:
+        ana     b               ; check shifted bit against vector byte
+        pop     h               ;
+        pop     b               ;
         ret
 
 ; pchar
@@ -658,12 +717,12 @@ flower:
         push    b               ;
         push    d               ;
         push    h               ;
-        sta     tmp             ; save line count
+        sta     flwrtmp         ; save line count
         call    setcur          ; put cursor at top left
         lxi     d,flowr1        ; print top line
         mvi     c,strout        ; print call
         call    sys             ; go print it
-        lda     tmp             ;
+        lda     flwrtmp         ; retrieve line count
         cpi     0               ; initial check
 flwr1:
         jz      flwr2           ; draw bottom line
@@ -679,9 +738,9 @@ flwr1:
         lxi     d,flowr2        ; blank row in flowerbox
         mvi     c,strout        ; print that
         call    sys             ; let CP/M print it
-        lda     tmp             ; get count back
+        lda     flwrtmp         ; get count back
         dcr     a               ; another line?
-        sta     tmp             ;
+        sta     flwrtmp         ; save updated line count
         jnz     flwr1           ;
 flwr2:
         dad     sp              ; get stack pointer H/L
@@ -1137,8 +1196,9 @@ frstok:
         lxi     b,fnlen         ; load B/C with filename length
         dad     b               ; add filename length to buffer pointer
         shld    flposn          ; save it
-        lxi     h,fcount        ; get file count
-        inr     m               ; increment
+        lda     fcount          ; get file count
+        inr     a               ; increment
+        sta     fcount          ; save it
 nxtfl:
         call    nextf           ; look for another file
         cpi     0ffh            ; no more files found
@@ -1152,9 +1212,25 @@ nxtfl:
         lxi     b,fnlen         ; load B/C with filename length
         dad     b               ; add filename length to buffer pointer
         shld    flposn          ; save it
-        lxi     h,fcount        ; get file count
-        inr     m               ; increment
+        lda     fcount          ; get file count
+        inr     a               ; increment
+        sta     fcount          ; save it
+        cpi     maxfls          ; did we hit max?
+        jz      enumful         ; yes, stop loading
         jmp     nxtfl           ; go try again
+enumful:
+        mvi     d,5             ; line 5
+        mvi     e,16            ; column 16
+        mvi     a,4             ; 4 blank lines
+        call    flower          ; draw a flower box
+        mvi     d,7             ; line 7
+        mvi     e,19            ; column 26
+        call    setcur          ; put cursor there
+        lxi     d,en2many       ; error message
+        mvi     c,strout        ; print it
+        call    sys             ; do the syscall
+        mvi     c,conin         ; wait for input
+        call    sys             ; via syscall
 enumret:
         ret                     ; all done
 
@@ -1317,7 +1393,8 @@ prnui:
         lxi     d,fndstr2       ; " (total of  " message
         mvi     c,strout        ; print string
         call    sys             ; CP/M
-        lhld    fcount          ; get file count
+        lda     fcount          ; get file count
+        mov     l,a             ; put in L for print
         call    prn8            ; print it as decimal
         mvi     c,strout        ; print string
         lxi     d,fndstr3       ; next part of header
@@ -1368,6 +1445,7 @@ welcom1 db      'An Altair 8800 File Manager$'
 welcom2 db      '2026 Mattydyne Heavy Industries$'
 welcom3 db      01bh,'[1m"H" for help, any other key to start',01bh,'[0m',CR,LF,'$'
 nofiles db      'No files found',CR,LF,'$'
+en2many db      'Exceeded max file count!$'
 fndstr1 db      'Listing of drive $'
 fndstr2 db      ' (total of $'
 fndstr3 db      ' files, $'
@@ -1380,6 +1458,7 @@ delmsg  db      'Delete file $'
 uichyn  db      ' (Y/N)? $'
 uichyna db      ' (Y/N/A)? $'
 logmsg  db      'Select new disk letter: $'
+logerr  db      'Disk x: is not available, any key to continue$'
 schfcb  db      0,'???????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 mworkng db      'Enumerating files in drive $'
 help1   db      'STEM - a basic file manager for CP/M 2.2 on Altair 8800',CR,LF,CR,LF,'$'
@@ -1390,9 +1469,29 @@ help1   db      'STEM - a basic file manager for CP/M 2.2 on Altair 8800',CR,LF,
 ; START OF VARIABLE DATA AREA
 ;***************************************************
 orgstk  ds      2               ; original stack pointer
-fcount  ds      2               ; file count addr
-flsel   ds      2               ; selected file number
-tmp     ds      2               ; temporary storage
+dpbase  ds      2               ; Disk Parameter Base address
+dphxlt  ds      2               ; XLT (address of phys to logical translation vector
+dphsp1  ds      2               ; scratch pad 1
+dphsp2  ds      2               ; scratch pad 2
+dphsp3  ds      2               ; scratch pad 3
+dphdbuf ds      2               ; address of 126-byte directory scratch pad
+dphdpb  ds      2               ; address of disk parameter block
+dphcsv  ds      2               ; address of changed disk scratch pad
+dphalv  ds      2               ; address of disk storage allocation
+dpbspt  ds      2               ; disk parameter block - sectors per track
+dpbbsh  ds      1               ; disk parameter block - block shift factor
+dpbblm  ds      1               ; disk parameter block - allocation block mask
+dpbexm  ds      1               ; disk parameter block - extent mask
+dpbdsm  ds      2               ; disk parameter block - total storage capacity
+dpbdrm  ds      2               ; disk parameter block - directory entry capacity
+dpbal0  ds      1               ; disk parameter block - reserved blocks
+dpbal1  ds      1               ; disk parameter block - reserved blocks
+dpbcks  ds      2               ; disk parameter block - directory check vector size
+dpboff  ds      2               ; disk parameter block - count of reserved tracks at beginning
+fcount  ds      1               ; file count addr
+flsel   ds      1               ; selected file number
+flwrtmp ds      1               ; temporary storage for flower box
+drvtmp  ds      1               ; drive letter storage during drive change
 flposn  ds      2               ; position in file name array
 flist   ds      maxfls*11+1     ; area for list of filenames
 tags    ds      tagcnt          ; bitmap of tagged files
