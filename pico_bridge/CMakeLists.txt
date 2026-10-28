@@ -25,8 +25,6 @@ file(GLOB SOURCE_FILES
 
 add_executable(88-wifi ${SOURCE_FILES})
 
-${CMAKE_CURRENT_LIST_DIR}/build/generated)
-
 # Initalise the SDK
 pico_sdk_init()
 
