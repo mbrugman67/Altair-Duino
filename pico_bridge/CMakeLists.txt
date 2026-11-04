@@ -17,10 +17,13 @@ project(88-wifi C CXX ASM)
 file(GLOB SOURCE_FILES
     "./src/*.h"
     "./src/*.cpp"
-    "./src/utils.h"
-    "./src/utils.cpp"
+    "./include/*.h"
+    "./src/utils.*h"
+    "./src/utils/*cpp"
     "./src/sys/*.h"
     "./src/sys/*.cpp"
+    "./src/core1/*.h"
+    "./src/core1/*.cpp"
 )
 
 add_executable(88-wifi ${SOURCE_FILES})
@@ -29,9 +32,26 @@ add_executable(88-wifi ${SOURCE_FILES})
 pico_sdk_init()
 
 # Libraries
-target_link_libraries(88-wifi pico_stdlib pico_cyw43_arch_none)
+target_link_libraries(88-wifi
+    pico_stdlib
+    pico_cyw43_arch_lwip_threadsafe_background
+    pico_multicore
+    hardware_watchdog
+)
 
-# Enable USB, UART output
+# Needed to pull in lwipopts.h in the ./src/include directory
+target_include_directories(88-wifi PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/src/include
+)
+
+# pull in WiFI credentials from environment
+target_compile_definitions(88-wifi PRIVATE
+        WIFI_SSID=""
+        WIFI_PASSWORD=""
+)
+
+# Enable USB stdin/stdout
 pico_enable_stdio_usb(88-wifi 1)
 pico_enable_stdio_uart(88-wifi 0)
 
