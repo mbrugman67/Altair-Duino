@@ -31,45 +31,37 @@
 #include <cstdio>
 
 // Project includes
+#include "./sys/network.h"
 #include "./utils/utils.h"
 #include "./utils/mlogger.h"
+#include "./utils/stringFormat.h"
 #include "./core1/core1.h"
 
 int main()
 {
-    static logger* log = logger::getInstance();
+    logger* log = logger::getInstance();
 
     // init STDIN/STDOUT through USB
     stdio_init_all();
 
+    // short sleep to allow terminal to reconnect
     sleep_ms(2000);
+    log->dbgWrite("stdio_init_all() done\r\n");
 
-    // Wireless module init, no RTOS
-    if (!cyw43_arch_init())
-    {
-        printf("cyw43_arch_init() done\r\n");
-
-        printf("WIFI_SSID = %s, WIFI_PASSWORD = %s\r\n", WIFI_SSID, WIFI_PASSWORD);
-
-        cyw43_arch_enable_sta_mode();
-        if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 10000))
-        {
-            printf("failed to connect\n");
-        }
-        else
-        {
-            printf("Connected!\r\n");
-        }
-    }
-    else
-    {
-        printf("wifi module not init'd\r\n");
-    }
+    NET88* network = NET88::getInstance();
 
     // startup core 1
     multicore_launch_core1(core1_main);
+    log->dbgWrite("multicore_launch_core1() done\r\n");
 
-    printf("%s", log->pop().c_str());
+    log->infoWrite("\r\n\r\n****************************************************\r\n"
+                   "                 Starting main loop"
+                   "\r\n****************************************************\r\n\r\n");
+
+    log->infoWrite(stringFormat("Current IP Address => %s\r\n", network->getIPAddress().c_str()));
+
+    uint32_t startTime = to_ms_since_boot(get_absolute_time());
+    bool ntpStarted = false;
 
     while(true)
     {
@@ -77,5 +69,24 @@ int main()
         heartbeat();
 
         printf("%s", log->pop().c_str());
+
+        if (to_ms_since_boot(get_absolute_time()) - startTime > 5000)
+        {
+            if (network->hasGoodIP())
+            {
+                log->infoWrite(stringFormat("Current IP Address => %s\r\n", network->getIPAddress().c_str()));
+
+                if (ntpStarted)
+                {
+                    network->doTime();
+                }
+                else
+                {
+                    network->initNTP();
+                    ntpStarted = true;
+                }
+            }
+            startTime = to_ms_since_boot(get_absolute_time());
+        }
     }
 }

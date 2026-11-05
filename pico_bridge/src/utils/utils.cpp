@@ -14,7 +14,6 @@ void heartbeat()
 {
     static uint32_t startTime = to_ms_since_boot(get_absolute_time());
 
-
     uint32_t elapsedTime = to_ms_since_boot(get_absolute_time()) - startTime;
 
     // blink the LED with a 1Hz frequency 66% duty cycle

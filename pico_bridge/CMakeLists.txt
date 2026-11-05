@@ -36,6 +36,8 @@ target_link_libraries(88-wifi
     pico_stdlib
     pico_cyw43_arch_lwip_threadsafe_background
     pico_multicore
+    pico_lwip_sntp
+    pico_aon_timer
     hardware_watchdog
 )
 
@@ -47,8 +49,8 @@ target_include_directories(88-wifi PRIVATE
 
 # pull in WiFI credentials from environment
 target_compile_definitions(88-wifi PRIVATE
-        WIFI_SSID=""
-        WIFI_PASSWORD=""
+        WIFI_SSID="virus"
+        WIFI_PASSWORD="sn0wball"
 )
 
 # Enable USB stdin/stdout

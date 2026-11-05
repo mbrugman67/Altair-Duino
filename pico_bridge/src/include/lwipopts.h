@@ -24,11 +24,11 @@
 #define LWIP_NETIF_STATUS_CALLBACK  1
 #define LWIP_NETIF_LINK_CALLBACK    1
 #define LWIP_NETIF_HOSTNAME         1
-#define LWIP_NETCONN                0
-#define MEM_STATS                   0
-#define SYS_STATS                   0
-#define MEMP_STATS                  0
-#define LINK_STATS                  0
+#define LWIP_NETCONN                0 //
+#define MEM_STATS                   0 //
+#define SYS_STATS                   0 //
+#define MEMP_STATS                  0 //
+#define LINK_STATS                  0 //
 
 #define LWIP_CHKSUM_ALGORITHM       3
 #define LWIP_DHCP                   1
@@ -42,7 +42,7 @@
 #define LWIP_DHCP_DOES_ACD_CHECK    0
 
 #ifndef NDEBUG
-#define LWIP_DEBUG                  1
+#define LWIP_DEBUG                  0 //
 #define LWIP_STATS                  1
 #define LWIP_STATS_DISPLAY          1
 #endif
@@ -75,5 +75,45 @@
 #define PPP_DEBUG                   LWIP_DBG_OFF
 #define SLIP_DEBUG                  LWIP_DBG_OFF
 #define DHCP_DEBUG                  LWIP_DBG_OFF
+
+/***********************************************
+* NTP STUFFS
+************************************************
+* Lifted from the Pico Examples repo
+***********************************************/
+
+// show debug information from the lwIP/SNTP application
+#define SNTP_DEBUG                  LWIP_DBG_ON
+#define SNTP_PORT                   LWIP_IANA_PORT_SNTP
+// verify IP addresses and port numbers of received packets
+#define SNTP_CHECK_RESPONSE         2
+
+// compensate for packet transmission delay
+// do NOT enable this on RP2040 if you are using aon_timer to keep the system
+// time, because it only has a 1 second resolution (see CMakeLists.txt)
+#ifdef DISABLE_SNTP_COMP_ROUNDTRIP
+#define   SNTP_COMP_ROUNDTRIP       0
+#else
+#define   SNTP_COMP_ROUNDTRIP       1
+#endif
+
+#define SNTP_STARTUP_DELAY          0
+#define SNTP_STARTUP_DELAY_FUNC     (LWIP_RAND() % 5000)
+#define SNTP_RECV_TIMEOUT           3000
+// how often to query the NTP servers, in ms (60000 is the minimum permitted by RFC4330)
+#define SNTP_UPDATE_DELAY           3600000
+#define SNTP_RETRY_TIMEOUT           SNTP_RECV_TIMEOUT
+#define SNTP_RETRY_TIMEOUT_MAX       (SNTP_RETRY_TIMEOUT * 10)
+#define	SNTP_RETRY_TIMEOUT_EXP       1
+#define SNTP_MONITOR_SERVER_REACHABILITY    1
+
+//* configure SNTP to use our callback functions for reading and setting the system time
+#define SNTP_GET_SYSTEM_TIME(sec, us)  sntp_get_system_time_us(&(sec), &(us))
+#define SNTP_SET_SYSTEM_TIME_US(sec, us)   sntp_set_system_time_us(sec, us)
+
+//* declare our callback functions (the implementations are in ntp_system_time.c)
+#include "stdint.h"
+void sntp_set_system_time_us(uint32_t sec, uint32_t us);
+void sntp_get_system_time_us(uint32_t *sec_ptr, uint32_t *us_ptr);
 
 #endif // LWIOPTS_H_
