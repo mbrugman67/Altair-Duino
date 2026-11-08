@@ -88,6 +88,9 @@
 // verify IP addresses and port numbers of received packets
 #define SNTP_CHECK_RESPONSE         2
 
+#define SNTP_SERVER_DNS             1
+#define SNTP_SERVER_ADDRESS         "pool.ntp.org"
+
 // compensate for packet transmission delay
 // do NOT enable this on RP2040 if you are using aon_timer to keep the system
 // time, because it only has a 1 second resolution (see CMakeLists.txt)
@@ -97,8 +100,8 @@
 #define   SNTP_COMP_ROUNDTRIP       1
 #endif
 
-#define SNTP_STARTUP_DELAY          0
-#define SNTP_STARTUP_DELAY_FUNC     (LWIP_RAND() % 5000)
+//#define SNTP_STARTUP_DELAY          0
+//#define SNTP_STARTUP_DELAY_FUNC     (LWIP_RAND() % 5000)
 #define SNTP_RECV_TIMEOUT           3000
 // how often to query the NTP servers, in ms (60000 is the minimum permitted by RFC4330)
 #define SNTP_UPDATE_DELAY           3600000

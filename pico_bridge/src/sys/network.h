@@ -3,6 +3,7 @@
 #define NETOWRK_H_
 
 #include <cstring>
+#include <string>
 
 #include "../utils/mlogger.h"
 
@@ -14,8 +15,7 @@ public:
 
     bool hasGoodIP();
     std::string getIPAddress();
-    void initNTP();
-    void doTime();
+    bool getTime(struct tm& tm);
 
 protected:
 

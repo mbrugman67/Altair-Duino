@@ -14,8 +14,10 @@
 ***************************************/
 void core1_main()
 {
+    logger* log = logger::getInstance();
+    log->infoWrite("Entering core 1 main()\r\n");
     while(true)
     {
-        heartbeat1();
+        heartbeatCore1();
     }
 }

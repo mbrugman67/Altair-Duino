@@ -39,16 +39,16 @@
 
 int main()
 {
-    logger* log = logger::getInstance();
-
     // init STDIN/STDOUT through USB
     stdio_init_all();
+
+    logger* log = logger::getInstance();
+    NET88* network = NET88::getInstance();
 
     // short sleep to allow terminal to reconnect
     sleep_ms(2000);
     log->dbgWrite("stdio_init_all() done\r\n");
 
-    NET88* network = NET88::getInstance();
 
     // startup core 1
     multicore_launch_core1(core1_main);
@@ -60,33 +60,11 @@ int main()
 
     log->infoWrite(stringFormat("Current IP Address => %s\r\n", network->getIPAddress().c_str()));
 
-    uint32_t startTime = to_ms_since_boot(get_absolute_time());
-    bool ntpStarted = false;
-
     while(true)
     {
         chkForReset();
-        heartbeat();
+        heartbeatCore0();
 
         printf("%s", log->pop().c_str());
-
-        if (to_ms_since_boot(get_absolute_time()) - startTime > 5000)
-        {
-            if (network->hasGoodIP())
-            {
-                log->infoWrite(stringFormat("Current IP Address => %s\r\n", network->getIPAddress().c_str()));
-
-                if (ntpStarted)
-                {
-                    network->doTime();
-                }
-                else
-                {
-                    network->initNTP();
-                    ntpStarted = true;
-                }
-            }
-            startTime = to_ms_since_boot(get_absolute_time());
-        }
     }
 }

@@ -18,12 +18,9 @@
 #include "pico/stdlib.h"
 #include "walltime.h"
 #include "../utils/stringFormat.h"
+#include "network.h"
 
-#define LOCAL_PORT 2390
-
-#define NTP_PORT                123
-#define SEVENTY_YEARS           (uint32_t)2208988800
-#define SECONDS_PER_DAY         (uint32_t)86400
+static NET88* network = NET88::getInstance();
 
 // Load some timezones.  If yours isn't hear, add it now!
 walltime::zdata_t walltime::zones[] = {
@@ -95,83 +92,6 @@ bool walltime::setTimezone(const std::string& zoneName)
 }
 
 /********************************************************
- * doNTP()
- ********************************************************
- * Send a UDP packet to a timeserver and parse the
- * response.  Sets the Pico RTC module to the current
- * time in the current timezone
- *
- * This is based on example code from the Pico SDK
- *******************************************************/
-bool walltime::doNTP()
-{
-    timeValid = false;
-    std::memset(packetBuffer, 0, NTP_PACKET_SIZE);
-
-    // prep a UDP packet to send
-    //udp.begin(LOCAL_PORT);
-
-    // Initialize values needed to form NTP request
-    packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-    packetBuffer[1] = 0;            // Stratum, or type of clock
-    packetBuffer[2] = 6;            // Polling Interval
-    packetBuffer[3] = 0xEC;         // Peer Clock Precision
-
-    // 8 bytes of zero for estimated error and drift rate
-
-    // 4 bytes, reference clock identifier
-    packetBuffer[12]  = 49;         // 1
-    packetBuffer[13]  = 0x4E;       // N
-    packetBuffer[14]  = 49;         // 1
-    packetBuffer[15]  = 52;         // 4
-
-    // Send the packet
-    //udp.beginPacket(timeServer, NTP_PORT);
-    //udp.write(packetBuffer, NTP_PACKET_SIZE);
-    //udp.endPacket();
-
-    // wait for the reponse
-    sleep_ms(4000);
-
-    /*
-    if (udp.parsePacket())
-    {
-        // We've received a packet, read the data from it
-        udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-
-        //the timestamp starts at byte 40 of the received packet and is four bytes
-        uint32_t netTime;
-        memcpy(&netTime, &packetBuffer[40], 4);
-
-        // get the number of seconds since 1/1/1900 in the right byte order
-        uint32_t secsSince1900 = __ntohl(netTime);
-
-        // Unix time starts on Jan 1 1970.  Subtract seventy years:
-        unixEpochTime = secsSince1900 - SEVENTY_YEARS;
-
-        // now to convert Unix time (did you remember to set the
-        // time zone first?)
-        struct tm* local = localtime(&unixEpochTime);
-
-        // convert from POSIX time struct to a Pico time struct
-        datetime_t pico;
-        pico.year = local->tm_year + 1900;
-        pico.month = local->tm_mon + 1;
-        pico.day = local->tm_mday;
-        pico.dotw = local->tm_wday;
-        pico.hour = local->tm_hour;
-        pico.min = local->tm_min;
-        pico.sec = local->tm_sec;
-
-        // set the Pico RTC
-        timeValid = rtc_set_datetime(&pico);
-    }
-    */
-
-    return (timeValid);
-}
-
-/********************************************************
  * timeString()
  ********************************************************
  * return a human-readable time string
@@ -180,14 +100,14 @@ std::string walltime::timeString()
 {
     std::string ret = std::string("<not set>");
 
-    // datetime_t now;
+    struct tm tm;
+    if (network->getTime(tm))
+    {
+        ret = stringFormat("%02d:%02d:%02d",
+            tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-    // get the time from the RTC module
-    //if (rtc_get_datetime(&now))
-    //{
-    //    ret = stringFormat("%02d:%02d:%02d",
-    //            now.hour, now.min, now.sec);
-    //}
+        return (ret);
+    }
 
     return (ret);
 }
@@ -201,13 +121,14 @@ std::string walltime::dateString()
 {
     std::string ret = std::string("<not set>");
 
-    // datetime_t now;
+    struct tm tm;
+    if (network->getTime(tm))
+    {
+        ret = stringFormat("%d/%d/%d",
+            tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900);
 
-    //if (rtc_get_datetime(&now))
-    //{
-    //    ret = stringFormat("%d/%d/%d",
-    //            now.month, now.day, now.year);
-    //}
+        return (ret);
+    }
 
     return (ret);
 }
@@ -222,14 +143,15 @@ std::string walltime::logTimeString()
 {
     std::string ret = std::string("<not set>");
 
-    // datetime_t now;
+    struct tm tm;
+    if (network->getTime(tm))
+    {
+        ret = stringFormat("%04d%02d%02d %02d:%02d:%02d",
+            tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+            tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-    //if (rtc_get_datetime(&now))
-    //{
-    //    ret = stringFormat("%04d%02d%02d %02d:%02d:%02d",
-    //            now.year, now.month, now.day,
-    //            now.hour, now.min, now.sec);
-    //}
+        return (ret);
+    }
 
     return (ret);
 }

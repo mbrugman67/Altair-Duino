@@ -13,6 +13,7 @@
 #include "pico/multicore.h"
 #include "../sys/walltime.h"
 #include "mlogger.h"
+#include "../sys/network.h"
 
 logger* logger::instance = NULL;
 
@@ -109,7 +110,6 @@ bool logger::isFull()
  ********************************************/
 size_t logger::addChar(char c)
 {
-    mutex_enter_blocking(&dbgMtx);
 
     // Never ending buffer... if it's full, just
     // increment the tail by one to make room.
@@ -125,7 +125,6 @@ size_t logger::addChar(char c)
     buff[head] = c;
     ++head;
     head %= LOGGER_BUFFER_SIZE;
-    mutex_exit(&dbgMtx);
 
     return (1);
 }
@@ -165,8 +164,14 @@ size_t logger::write(const std::string& s)
  ********************************************/
 size_t logger::msgWrite(const std::string& ms)
 {
-    std::string s = stringFormat("[+%d] %s,%s", get_core_num(), walltime::logTimeString().c_str(), ms.c_str());
-    return (this->write(s));
+    mutex_enter_blocking(&dbgMtx);
+    std::string s = stringFormat("[+%d] [%s] %s", get_core_num(), walltime::logTimeString().c_str(), ms.c_str());
+
+    size_t cnt = this->write(s);
+
+    mutex_exit(&dbgMtx);
+
+    return (cnt);
 }
 
 /*********************************************
@@ -177,8 +182,13 @@ size_t logger::msgWrite(const std::string& ms)
  ********************************************/
 size_t logger::dbgWrite(const std::string& ms)
 {
-    std::string s = stringFormat("[D%d] %s,%s", get_core_num(), walltime::logTimeString().c_str(), ms.c_str());
-    return (this->write(s));
+    mutex_enter_blocking(&dbgMtx);
+    std::string s = stringFormat("[D%d] [%s] %s", get_core_num(), walltime::logTimeString().c_str(), ms.c_str());
+
+    size_t cnt = this->write(s);
+    mutex_exit(&dbgMtx);
+
+    return (cnt);
 }
 
 /*********************************************
@@ -189,8 +199,14 @@ size_t logger::dbgWrite(const std::string& ms)
  ********************************************/
 size_t logger::infoWrite(const std::string& is)
 {
-    std::string s = stringFormat("[+%d] %s,%s", get_core_num(), walltime::logTimeString().c_str(), is.c_str());
-    return (this->write(s));
+    mutex_enter_blocking(&dbgMtx);
+    std::string s = stringFormat("[+%d] [%s] %s", get_core_num(), walltime::logTimeString().c_str(), is.c_str());
+
+    size_t cnt = this->write(s);
+
+    mutex_exit(&dbgMtx);
+
+    return (cnt);
 }
 
 /*********************************************
@@ -201,8 +217,14 @@ size_t logger::infoWrite(const std::string& is)
  ********************************************/
 size_t logger::errWrite(const std::string& es)
 {
-    std::string s = stringFormat("[E%d] %s,%s", get_core_num(), walltime::logTimeString().c_str(), es.c_str());
-    return (this->write(s));
+    mutex_enter_blocking(&dbgMtx);
+    std::string s = stringFormat("[E%d] [%s] %s", get_core_num(), walltime::logTimeString().c_str(), es.c_str());
+
+    size_t cnt = this->write(s);
+
+    mutex_exit(&dbgMtx);
+
+    return (cnt);
 }
 
 /*********************************************
@@ -213,8 +235,14 @@ size_t logger::errWrite(const std::string& es)
  ********************************************/
 size_t logger::warnWrite(const std::string& ws)
 {
-    std::string s = stringFormat("[W%d] %s,%s", get_core_num(), walltime::logTimeString().c_str(), ws.c_str());
-    return (this->write(s));
+    mutex_enter_blocking(&dbgMtx);
+    std::string s = stringFormat("[W%d] [%s] %s", get_core_num(), walltime::logTimeString().c_str(), ws.c_str());
+
+    size_t cnt = this->write(s);
+
+    mutex_exit(&dbgMtx);
+
+    return (cnt);
 }
 
 /*********************************************
@@ -239,11 +267,9 @@ void logger::pop(char& c)
 {
     if (head != tail)
     {
-        mutex_enter_blocking(&dbgMtx);
         c = buff[tail];
         ++tail;
         tail %= LOGGER_BUFFER_SIZE;
-        mutex_exit(&dbgMtx);
     }
 }
 
