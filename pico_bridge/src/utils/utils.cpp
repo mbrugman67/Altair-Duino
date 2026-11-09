@@ -15,123 +15,46 @@
 
 static logger* log = logger::getInstance();
 
-volatile static uint32_t db0Counter = 0;
-volatile static uint32_t db1Counter = 0;
-
-static int heartbeatDoorbellID0 = 0;
-static int heartbeatDoorbellID1 = 0;
-static bool db0Started = false;
-static bool db1Started = false;
-static bool trig0to1 = true;
-
-void doorbellIRQCore0()
+void heartbeat()
 {
-    ++db0Counter;
-    multicore_doorbell_clear_current_core(heartbeatDoorbellID0);
-    log->dbgWrite("ISR\r\n");
-}
+    static uint16_t other[2] = {1, 0};
+    static uint32_t hbCount[2] = {0, 0};
+    static uint32_t hbLastCount[2] = {0, 1};
+    static uint32_t startTime[2] = {to_ms_since_boot(get_absolute_time()), to_ms_since_boot(get_absolute_time())};
+    static uint32_t hbTime[2] = {CORE_0_WATCHDOG_TIME, CORE_1_WATCHDOG_TIME};
+    static bool triggered[2] = {false, false};
+    static bool ledState[2] = {true, false};
+    static bool alerted[2] = {false, false};
 
-void heartbeatCore0()
-{
-    static uint32_t lastCoreCount = db0Counter;
-    static uint32_t startTime = 0;
-    static bool triggered = false;
-    static bool init = false;
-    static bool alerted = false;
+    uint16_t core = get_core_num();
+    uint32_t elapsed = to_ms_since_boot(get_absolute_time()) - startTime[core];
 
-    if (!db0Started)
+    if (hbCount[core] != hbLastCount[core])
     {
-        heartbeatDoorbellID0 = multicore_doorbell_claim_unused(3, true);
-
-        uint32_t irqNum = multicore_doorbell_irq_num(heartbeatDoorbellID0);
-        //irq_add_shared_handler(irqNum, doorbellIRQCore0, PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
-        irq_set_exclusive_handler(irqNum, doorbellIRQCore0);
-        log->dbgWrite(stringFormat("HB ID %d, irq %d\r\n", heartbeatDoorbellID0, irqNum));
-
-        multicore_doorbell_clear_current_core(heartbeatDoorbellID0);
-
-        irq_set_enabled(irqNum, true);
-
-        db0Started = true;
-        startTime = to_ms_since_boot(get_absolute_time());
-        return;
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, ledState[core]);
+        startTime[core] = to_ms_since_boot(get_absolute_time());
+        triggered[core] = false;
+        hbLastCount[core] = hbCount[core];
     }
 
-    if (db0Started)
+    if (elapsed > WATCHDOG_TIMEOUT)
     {
-        if (db0Counter != lastCoreCount)
+        if (!alerted[core])
         {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, true);
-            startTime = to_ms_since_boot(get_absolute_time());
-            log->dbgWrite(stringFormat("Doorbell counter %d\r\n", db0Counter));
-            triggered = false;
-            lastCoreCount = db0Counter;
-        }
-
-        if ((to_ms_since_boot(get_absolute_time()) - startTime) > WATCHDOG_TIMEOUT)
-        {
-            if (!alerted)
-            {
-                log->errWrite("WATCHDOG EXPIRED!\r\n");
-                alerted = true;
-            }
-        }
-        else if ((to_ms_since_boot(get_absolute_time()) - startTime) > CORE_0_WATCHDOG_TIME)
-        {
-            if (!triggered)
-            {
-                trig0to1 = true;
-                log->dbgWrite("Setting trig0to1\r\n");
-                triggered = true;
-            }
+            log->errWrite("WATCHDOG EXPIRED!\r\n");
+            alerted[core] = true;
         }
     }
-
-}
-
-void doorbellIRQCore1()
-{
-    //++db1Counter;
-    //multicore_doorbell_clear_current_core(heartbeatDoorbellID1);
-    //log->dbgWrite("ISR\r\n");
-}
-
-void heartbeatCore1()
-{
-    static uint32_t startTime = 0;
-    static bool triggered = false;
-    static bool init = false;
-    static bool alerted = false;
-
-    if (db0Started)
+    else if (elapsed > hbTime[core])
     {
-        if (trig0to1)
+        if (!triggered[core])
         {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, false);
-            trig0to1 = false;
-            startTime = to_ms_since_boot(get_absolute_time());
-            triggered = false;
-        }
-
-        if ((to_ms_since_boot(get_absolute_time()) - startTime) > WATCHDOG_TIMEOUT)
-        {
-            if (!alerted)
-            {
-                log->errWrite("WATCHDOG EXPIRED!\r\n");
-                alerted = true;
-            }
-        }
-        else if ((to_ms_since_boot(get_absolute_time()) - startTime) > CORE_0_WATCHDOG_TIME)
-        {
-            if (!triggered)
-            {
-                multicore_doorbell_set_other_core(heartbeatDoorbellID0);
-                log->dbgWrite("Ringing doorbell\r\n");
-                triggered = true;
-            }
+            ++hbCount[other[core]];
+            triggered[core] = true;
         }
     }
 }
+
 
 void chkForReset()
 {

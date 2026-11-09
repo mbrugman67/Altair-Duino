@@ -63,7 +63,7 @@ int main()
     while(true)
     {
         chkForReset();
-        heartbeatCore0();
+        heartbeat();
 
         printf("%s", log->pop().c_str());
     }
