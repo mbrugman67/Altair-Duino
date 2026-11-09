@@ -34,7 +34,6 @@
 #include "./sys/network.h"
 #include "./utils/utils.h"
 #include "./utils/mlogger.h"
-#include "./utils/stringFormat.h"
 #include "./core1/core1.h"
 
 int main()

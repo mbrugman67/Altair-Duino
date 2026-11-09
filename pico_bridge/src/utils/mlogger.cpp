@@ -9,7 +9,7 @@
 #include <string>
 #include <cstring>
 
-#include "stringFormat.h"
+#include "utils.h"
 #include "pico/multicore.h"
 #include "../sys/walltime.h"
 #include "mlogger.h"
@@ -254,7 +254,21 @@ size_t logger::warnWrite(const std::string& ws)
  ********************************************/
 size_t logger::hexWrite(int i)
 {
-    return (this->write(stringFormat("0x%04x", i)));
+    mutex_enter_blocking(&dbgMtx);
+    size_t cnt = this->write(stringFormat("0x%04x", i));
+    mutex_exit(&dbgMtx);
+
+    return (cnt);
+}
+
+size_t logger::rawWrite(const std::string& s)
+{
+    mutex_enter_blocking(&dbgMtx);
+    size_t cnt = this->write(s);
+
+    mutex_exit(&dbgMtx);
+
+return (cnt);
 }
 
 /*********************************************

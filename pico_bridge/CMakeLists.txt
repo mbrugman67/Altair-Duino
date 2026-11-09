@@ -39,6 +39,7 @@ target_link_libraries(88-wifi
     pico_lwip_sntp
     pico_aon_timer
     hardware_watchdog
+    hardware_gpio
 )
 
 # Needed to pull in lwipopts.h in the ./src/include directory

@@ -8,6 +8,7 @@
 
 #include "../utils/utils.h"
 #include "../utils/mlogger.h"
+#include "iohandler.h"
 
 /***************************************
 * Main entry point for core 1
@@ -16,8 +17,13 @@ void core1_main()
 {
     logger* log = logger::getInstance();
     log->infoWrite("Entering core 1 main()\r\n");
+
+    initIO();
+    setISREnables(true);
+
     while(true)
     {
         heartbeat();
+        updateIO();
     }
 }

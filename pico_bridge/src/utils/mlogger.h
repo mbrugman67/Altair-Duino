@@ -29,8 +29,6 @@ public:
     void pop(char* c, size_t& len);  // pull up to len chars in buffer
     std::string pop();               // pull it all as a std::string
 
-    // generic write to buffer
-    size_t write(const std::string& s);
 
     // more specialized
     size_t msgWrite(const std::string& ms);     // prefix with [+] date time
@@ -39,11 +37,15 @@ public:
     size_t errWrite(const std::string& es);     // prefix with [E] date time
     size_t warnWrite(const std::string& ws);    // prefix with [W] date time
     size_t hexWrite(int i);                     // write in 0x00 hex format
+    size_t rawWrite(const std::string& s);      // write to log, no formatting
 
 private:
     bool isEmpty();
     size_t addChar(char c);
     void pop(char& c);
+
+    // generic write to buffer, private because it needs to be inside of a mutex()
+    size_t write(const std::string& s);
 
     char buff[LOGGER_BUFFER_SIZE];
     size_t head;

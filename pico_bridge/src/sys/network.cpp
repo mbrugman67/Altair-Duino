@@ -10,7 +10,7 @@
 #include <cstddef>
 
 #include "network.h"
-#include "../utils/stringFormat.h"
+#include "../utils/utils.h"
 
 NET88* NET88::instance = NULL;
 

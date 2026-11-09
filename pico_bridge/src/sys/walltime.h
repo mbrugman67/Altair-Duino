@@ -33,10 +33,7 @@ public:
     const std::string listZones();
 
     bool isTimeValid()          {return (timeValid); }
-
     bool setTimezone(const std::string& zoneName);
-    bool doNTP();
-    bool setArmClockTime();
 
     static std::string timeString();
     static std::string dateString();
@@ -51,12 +48,7 @@ private:
 
     static zdata_t zones[];
 
-    //WiFiUDP udp;
-    //IPAddress timeServer;
-
     bool timeValid;
-    uint8_t packetBuffer[NTP_PACKET_SIZE];      // buffer to hold incoming and outgoing packets
-    time_t unixEpochTime;
 };
 
 #endif // WALLTIME_H_
