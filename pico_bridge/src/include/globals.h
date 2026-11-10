@@ -7,11 +7,13 @@
 #define WATCHDOG_TIMEOUT        10000
 
 
-#define PIN_SELECT              0
-#define PIN_A0                  1
-#define PIN_A1                  2
+#define PIN_SELECT              2
+#define PIN_A0                  0
+#define PIN_A1                  1
 #define PIN_INP                 3
 #define PIN_OUT                 4
 #define PIN_WAIT                5
+#define PIN_I2C0_SCL           13
+#define PIN_I2C0_SDA           12
 
 #endif // GLOBAL_H_

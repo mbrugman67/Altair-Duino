@@ -40,6 +40,7 @@ target_link_libraries(88-wifi
     pico_aon_timer
     hardware_watchdog
     hardware_gpio
+    hardware_i2c
 )
 
 # Needed to pull in lwipopts.h in the ./src/include directory
@@ -57,6 +58,9 @@ target_compile_definitions(88-wifi PRIVATE
 # Enable USB stdin/stdout
 pico_enable_stdio_usb(88-wifi 1)
 pico_enable_stdio_uart(88-wifi 0)
+
+# use XIP Cache for fast SRAM
+pico_use_xip_cache_as_ram(88-wifi)
 
 # Enable extra outputs
 pico_add_extra_outputs(88-wifi)
