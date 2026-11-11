@@ -15,24 +15,41 @@ enum bus_event_t
     BUS_UNKNOWN
 };
 
-static bool ioInitd = false;
+static uint32_t isrMask = GPIO_IRQ_LEVEL_HIGH | GPIO_IRQ_EDGE_FALL;
+
 static logger* log = logger::getInstance();
 
 static volatile bus_event_t busEvent = BUS_NONE;
 static volatile uint32_t isrInputState = 0;
 
+uint32_t dbgCount = 0;
+volatile uint32_t isrFail = 0;
+volatile uint32_t isrCount = 0;
+
 void __time_critical_func(altairBusISR)(uint gpio, uint32_t event_mask)
 {
-    isrInputState = gpio_get_all() & 0x3f;
-
-    switch (gpio)
+    if (GETBIT(event_mask, GPIO_IRQ_EDGE_FALL))
     {
-        case PIN_INP:   busEvent = BUS_INPUT;   return;
-        case PIN_OUT:   busEvent = BUS_OUTPUT;  return;
+        ++isrFail;
     }
 
-    busEvent = BUS_UNKNOWN;
-    return;
+    ++isrCount;
+
+    if (gpio_get(PIN_OUT))
+    {
+        busEvent = BUS_OUTPUT;
+        isrInputState = gpio_get_all() & 0x3f;
+        gpio_set_irq_enabled(PIN_SELECT, isrMask, false);
+        return;
+    }
+
+    if (gpio_get(PIN_INP))
+    {
+        busEvent = BUS_INPUT;
+        isrInputState = gpio_get_all() & 0x3f;
+        gpio_set_irq_enabled(PIN_SELECT, isrMask, false);
+        return;
+    }
 }
 
 /**********************************************
@@ -48,17 +65,16 @@ void __time_critical_func(altairBusISR)(uint gpio, uint32_t event_mask)
 **********************************************/
 void initIO()
 {
-    uint32_t pin_mask = (1u << PIN_SELECT) | (1u << PIN_A0) | (1u << PIN_A1) |
-                        (1u << PIN_INP) | (1u << PIN_OUT) | (1u << PIN_WAIT);
+    uint32_t pins[] = {PIN_SELECT, PIN_A0, PIN_A1, PIN_INP, PIN_OUT, PIN_WAIT};
+    size_t pinCount = sizeof(pins) / sizeof(pins[0]);
 
-    gpio_init_mask(pin_mask);
-
-    gpio_set_dir(PIN_A0, GPIO_IN);
-    gpio_set_dir(PIN_A1, GPIO_IN);
-    gpio_set_dir(PIN_SELECT, GPIO_IN);
-    gpio_set_dir(PIN_INP, GPIO_IN);
-    gpio_set_dir(PIN_OUT, GPIO_IN);
-    gpio_set_dir(PIN_WAIT, GPIO_IN);
+    for (size_t pinNum = 0; pinNum < pinCount; ++pinNum)
+    {
+        gpio_init(pins[pinNum]);
+        gpio_set_slew_rate(pins[pinNum], GPIO_SLEW_RATE_FAST);
+        gpio_set_input_hysteresis_enabled(pins[pinNum], false);
+        gpio_set_dir(pins[pinNum], GPIO_IN);
+    }
 
     i2c_init(i2c_default, 100 * 1000);
     gpio_set_function(PIN_I2C0_SDA, GPIO_FUNC_I2C);
@@ -66,58 +82,38 @@ void initIO()
     gpio_pull_up(PIN_I2C0_SCL);
     gpio_pull_up(PIN_I2C0_SDA);
 
-
-    log->dbgWrite(stringFormat("init IO: pin_mask 0x%04x\r\n", pin_mask));
-
-    ioInitd = true;
-}
-
-bool isIoInitd()
-{
-    return (ioInitd);
-}
-
-void setISREnables(bool state)
-{
-    gpio_set_irq_enabled_with_callback (PIN_SELECT, GPIO_IRQ_EDGE_RISE, true, altairBusISR);
-    //gpio_set_irq_enabled_with_callback (PIN_OUT, GPIO_IRQ_EDGE_RISE, true, altairBusISR);
-
-    if (ioInitd)
-    {
-    //    gpio_set_irq_enabled(PIN_INP, GPIO_IRQ_EDGE_RISE, state);
-    //    gpio_set_irq_enabled(PIN_OUT, GPIO_IRQ_EDGE_RISE, state);
-    }
+    //gpio_set_irq_callback(&altairBusISR);
+    gpio_set_irq_enabled_with_callback(PIN_SELECT, isrMask, true, altairBusISR);
 }
 
 bool updateIO()
 {
     bool retval = false;
+    static bool oneShot = false;
+    if (!gpio_get(PIN_SELECT))
+    {
+        oneShot = false;
+    }
+    else if(!oneShot)
+    {
+        ++dbgCount;
+        oneShot = true;
+    }
 
     switch(busEvent)
     {
-        case BUS_NONE:
-        {
-
-        }  break;
-
         case BUS_INPUT:
         {
-            log->dbgWrite(stringFormat("BUS_INPUT event!  Pins = 0x%04x\r\n", isrInputState));
+            log->dbgWrite(stringFormat("BUS_INPUT event!  count= %d\r\n", isrInputState));
+            gpio_set_irq_enabled(PIN_SELECT, isrMask, true);
+            isrInputState = 0;
         }  break;
 
         case BUS_OUTPUT:
         {
-            log->dbgWrite(stringFormat("BUS_OUTPUT event!  Pins = 0x%04x\r\n", isrInputState));
-        }  break;
-
-        case BUS_NO_SELECT:
-        {
-            //log->dbgWrite("BUS_NO_SELECT event!\r\n");
-        }  break;
-
-        case BUS_UNKNOWN:
-        {
-            log->dbgWrite(stringFormat("BUS_UNKNOWN event!  Pins = 0x%04x\r\n", isrInputState));
+            log->dbgWrite(stringFormat("BUS_OUTPUT event!  count= %d\r\n", isrInputState));
+            gpio_set_irq_enabled(PIN_SELECT, isrMask, true);
+            isrInputState = 0;
         }  break;
     }
 

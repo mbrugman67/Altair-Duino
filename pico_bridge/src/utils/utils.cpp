@@ -2,6 +2,7 @@
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "pico/multicore.h"
+#include "pico/bootrom.h"
 #include "hardware/watchdog.h"
 
 // Normal C/C++ includes
@@ -131,15 +132,39 @@ void chkForReset()
 {
     logger* log = logger::getInstance();
 
-    if (getchar_timeout_us(0) == 'r')
+    char c = getchar_timeout_us(0);
+    switch (c)
     {
-        log->dbgWrite("Got a reset\r\n");
+        case 'r':
+        {
+            log->dbgWrite("Got a reset\r\n");
 
-        // flush stdio before restarting
-        printf("%s", log->pop().c_str());
+            // flush stdio before restarting
+            printf("%s", log->pop().c_str());
 
-        // turn on watchdog with a 50ms delay
-        watchdog_enable(50, 0);
-        while (true);
-    }
+            // turn on watchdog with a 50ms delay
+            watchdog_enable(50, 0);
+            while (true);
+        }  break;
+
+        case 'b':
+        {
+            log->dbgWrite("Requesting bootloader!\r\n");
+            printf("%s", log->pop().c_str());
+
+            rom_reset_usb_boot(0, 0);
+        }  break;
+
+        case 'i':
+        {
+            log->dbgWrite("Debug info....\r\n");
+            log->dbgWrite("Pending ISRs:\r\n");
+            log->rawWrite(stringFormat("\t->PIN_SELECT: %d\r\n", gpio_get_irq_event_mask(PIN_SELECT)));
+            log->rawWrite(stringFormat("\t   ->PIN_INP: %d\r\n", gpio_get_irq_event_mask(PIN_INP)));
+            log->rawWrite(stringFormat("\t   ->PIN_OUT: %d\r\n", gpio_get_irq_event_mask(PIN_OUT)));
+            log->dbgWrite(stringFormat("Debug count = %d\r\n", dbgCount));
+            log->dbgWrite(stringFormat("isrFail count = %d\r\n", isrFail));
+            log->dbgWrite(stringFormat("ISR call count = %d\r\n\r\n", isrCount));
+        }  break;
+    } // user input switch
 }

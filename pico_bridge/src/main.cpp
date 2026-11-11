@@ -53,7 +53,7 @@ int main()
     multicore_launch_core1(core1_main);
     log->dbgWrite("multicore_launch_core1() done\r\n");
 
-    log->infoWrite("\r\n\r\n****************************************************\r\n"
+    log->rawWrite("\r\n****************************************************\r\n"
                    "                 Starting main loop"
                    "\r\n****************************************************\r\n\r\n");
 

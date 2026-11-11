@@ -19,10 +19,10 @@ void core1_main()
     log->infoWrite("Entering core 1 main()\r\n");
 
     initIO();
-    setISREnables(true);
 
     while(true)
     {
+        //chkForReset();
         heartbeat();
         updateIO();
     }
