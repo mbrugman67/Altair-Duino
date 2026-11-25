@@ -20,7 +20,7 @@
 #define SETBIT(w,b)     (w |= BIT(b))
 #define CLRBIT(w,b)     (w &= ~(BIT(b)))
 
-extern uint32_t dbgCount;
+volatile extern uint32_t dbgCount;
 extern volatile uint32_t isrCount;
 extern volatile uint32_t isrFail;
 

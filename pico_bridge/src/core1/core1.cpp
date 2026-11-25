@@ -20,6 +20,8 @@ void core1_main()
 
     initIO();
 
+    log->dbgWrite(stringFormat("XIP BASE = 0x%04x\r\n", XIP_BASE));
+
     while(true)
     {
         //chkForReset();

@@ -15,17 +15,74 @@ enum bus_event_t
     BUS_UNKNOWN
 };
 
-static uint32_t isrMask = GPIO_IRQ_LEVEL_HIGH | GPIO_IRQ_EDGE_FALL;
+static uint32_t isrMask = GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL;
 
 static logger* log = logger::getInstance();
 
 static volatile bus_event_t busEvent = BUS_NONE;
 static volatile uint32_t isrInputState = 0;
 
-uint32_t dbgCount = 0;
+volatile uint32_t dbgCount = 0;
 volatile uint32_t isrFail = 0;
 volatile uint32_t isrCount = 0;
 
+volatile bool selectHigh = false;
+volatile bool inputHigh = false;
+volatile bool outputHigh = false;
+
+void __time_critical_func(isrSelectLine)(uint gpio, uint32_t event_mask)
+{
+    bool up = ((event_mask & GPIO_IRQ_EDGE_RISE) == GPIO_IRQ_EDGE_RISE);
+    bool dn = ((event_mask & GPIO_IRQ_EDGE_FALL) == GPIO_IRQ_EDGE_FALL);
+
+    if (up && !dn)
+    {
+        busEvent = BUS_OUTPUT;
+        ++isrCount;
+    }
+    else if (!up && dn)
+    {
+        ++dbgCount;
+    }
+    else if (up && dn)
+    {
+        ++isrFail;
+    }
+}
+
+void __time_critical_func(isrInpLine)(uint gpio, uint32_t event_mask)
+{
+    bool up = ((event_mask & GPIO_IRQ_EDGE_RISE) == GPIO_IRQ_EDGE_RISE);
+    bool dn = ((event_mask & GPIO_IRQ_EDGE_FALL) == GPIO_IRQ_EDGE_FALL);
+
+    if (up && !dn)
+    {
+        busEvent = BUS_OUTPUT;
+        ++isrCount;
+    }
+    else if (!up && dn)
+    {
+        ++dbgCount;
+    }
+    else if (up && dn)
+    {
+        ++isrFail;
+    }
+}
+
+void __time_critical_func(isrOutLine)(uint gpio, uint32_t event_mask)
+{
+    if (GETBIT(event_mask, GPIO_IRQ_EDGE_FALL))
+    {
+        outputHigh = false;
+    }
+    else if (GETBIT(event_mask, GPIO_IRQ_EDGE_RISE))
+    {
+        outputHigh = true;
+    }
+}
+
+/*
 void __time_critical_func(altairBusISR)(uint gpio, uint32_t event_mask)
 {
     if (GETBIT(event_mask, GPIO_IRQ_EDGE_FALL))
@@ -51,6 +108,8 @@ void __time_critical_func(altairBusISR)(uint gpio, uint32_t event_mask)
         return;
     }
 }
+*/
+
 
 /**********************************************
 * Dedicated inputs:
@@ -83,7 +142,9 @@ void initIO()
     gpio_pull_up(PIN_I2C0_SDA);
 
     //gpio_set_irq_callback(&altairBusISR);
-    gpio_set_irq_enabled_with_callback(PIN_SELECT, isrMask, true, altairBusISR);
+    gpio_set_irq_enabled_with_callback(PIN_SELECT, isrMask, true, isrSelectLine);
+    //gpio_set_irq_enabled_with_callback(PIN_INP, isrMask, true, isrInpLine);
+    //gpio_set_irq_enabled_with_callback(PIN_OUT, isrMask, true, isrOutLine);
 }
 
 bool updateIO()
@@ -96,7 +157,7 @@ bool updateIO()
     }
     else if(!oneShot)
     {
-        ++dbgCount;
+        //dbgCount;
         oneShot = true;
     }
 
@@ -105,14 +166,12 @@ bool updateIO()
         case BUS_INPUT:
         {
             log->dbgWrite(stringFormat("BUS_INPUT event!  count= %d\r\n", isrInputState));
-            gpio_set_irq_enabled(PIN_SELECT, isrMask, true);
             isrInputState = 0;
         }  break;
 
         case BUS_OUTPUT:
         {
             log->dbgWrite(stringFormat("BUS_OUTPUT event!  count= %d\r\n", isrInputState));
-            gpio_set_irq_enabled(PIN_SELECT, isrMask, true);
             isrInputState = 0;
         }  break;
     }
