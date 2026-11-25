@@ -1,0 +1,73 @@
+;
+; PIO State Machine to monitor Bus signals:
+;   INP -> A-D requesting input
+;   OUT -> A-D putting data out
+;   SEL -> And'd address signals indicating A-D is addressing us
+;
+
+.program bus_pio
+
+.wrap_target
+    mov x 31                ; preload X with 31
+    wait 1 pin 2            ; wait for the select pin to go high
+    jmp pin set_out         ; this is an OUT from the CPU
+
+    wait 0 pin 2            ; wait for it to go low
+    .wrap                   ; go start again
+
+set_out:
+
+
+wait_loop1:
+    jmp x-- wait_loop1      ; no in or out, go try again
+
+
+jmp
+
+    pull                    ; get the "on" time of the glitch pulse
+    mov x OSR               ; store it in X
+    pull                    ; get the number of edges in the trigger character
+    mov y OSR               ; store it in Y
+    pull                    ; get the delay before starting glitch pulse (just hold on for now)
+
+trigger_loop:
+    wait 0 pin 0            ; idle state of TX line is high, wait for it to go low
+    wait 1 pin 0            ; wait for it to go back up
+    jmp y-- trigger_loop     ; decrement
+
+    mov y OSR               ; now set the delay time to the y register
+
+delay_loop:
+    jmp y-- delay_loop      ; decrement delay before turning on the output
+
+    set pins 1              ; OK, turn it on now
+
+high_loop:
+    jmp x-- high_loop       ; decrement the glitch pulse high time
+    set pins 0              ; turn it off
+
+.wrap
+
+
+
+% c-sdk {
+#include "hardware/clocks.h"
+static inline void bus_pio_program_init(PIO pio, uint sm, uint offset, uint A0_pin, uint wait_pin) {
+    pio_sm_config c = bus_pio_program_get_default_config(offset);
+
+    //sm_config_set_set_pins (&c, wait_pin, 1);
+    sm_config_set_in_pins(&c, A0_pin);
+
+    //pio_gpio_init(pio, glitch_pin);
+    //pio_sm_set_consecutive_pindirs(pio, sm, wait_pin, 1, true);
+    pio_sm_set_consecutive_pindirs(pio, sm, A0_pin, 6, false);
+    pio_sm_set_jmp_pin(pio, sm, 4);
+
+    // 100MHz = 10ns per instruction
+    float div = (float)clock_get_hz(clk_sys) / (100e6);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

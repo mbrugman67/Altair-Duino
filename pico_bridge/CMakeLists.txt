@@ -31,6 +31,8 @@ add_executable(88-wifi ${SOURCE_FILES})
 # Initalise the SDK
 pico_sdk_init()
 
+pico_generate_pio_header (88-wifi ${CMAKE_CURRENT_LIST_DIR}/src/core1/bus.pio)
+
 # Libraries
 target_link_libraries(88-wifi
     pico_stdlib
@@ -41,6 +43,7 @@ target_link_libraries(88-wifi
     hardware_watchdog
     hardware_gpio
     hardware_i2c
+    hardware_pio
 )
 
 # Needed to pull in lwipopts.h in the ./src/include directory
